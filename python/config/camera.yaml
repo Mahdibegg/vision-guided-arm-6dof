@@ -6,6 +6,10 @@ camera:
   fps: 30
   format: "MJPG"
 
-# Current offset from base unknown (all set to 0)
-mount:
-  offset: [0.0, 0.0, 0.0]
+simulation_camera:
+  sensor_path: "/Vision_sensor"
+  width: 1280
+  height: 720
+  fps: 30
+  host: "localhost"
+  port: 23000

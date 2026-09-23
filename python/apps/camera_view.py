@@ -2,7 +2,7 @@ import cv2 as cv
 
 from ultralytics import YOLO
 from arm.vision.camera import Camera
-from arm.vision.detect import Detector, Detection, highlight_objects
+from arm.vision.detect import Detector, highlight_objects
 from arm.config_loader import (
     load_camera_config,
     load_grounding_dino_config,
@@ -45,7 +45,6 @@ def main() -> None:
         while loop:
             frame = camera.read()
             objects_identified = detection_system.analyse(frame)
-            # result = detect(objects_identified, "")
             loop = camera.display(highlight_objects(frame, objects_identified))
     finally:
         camera.close()

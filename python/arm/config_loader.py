@@ -55,6 +55,15 @@ class CameraConfig:
     fps: int
     format: str
 
+@dataclass(frozen=True, slots=True)
+class SimulationCameraConfig:
+  sensor_path: str
+  width: int
+  height: int
+  fps: int
+  host: str
+  port: int
+
 def load_camera_config() -> CameraConfig:
     data = load_yaml(CAMERA_CONFIG_PATH)["camera"]
 
@@ -64,6 +73,18 @@ def load_camera_config() -> CameraConfig:
         height = data["height"],
         fps = data["fps"],
         format = data["format"]
+    )
+
+def load_simulation_camera_config() -> SimulationCameraConfig:
+    data = load_yaml(CAMERA_CONFIG_PATH)["simulation_camera"]
+    
+    return SimulationCameraConfig(
+        sensor_path = data["sensor_path"],
+        width = data["width"],
+        height = data["height"],
+        fps = data["fps"],
+        host = data["host"],
+        port = data["port"]
     )
 
 # Loading detection model values
@@ -78,7 +99,6 @@ def load_grounding_dino_config() -> Path:
         )
 
     return GROUNDING_DINO_CONFIG_PATH
-
 
 def load_grounding_dino_weights() -> Path:
     """Return the path to the Grounding DINO model weights."""
