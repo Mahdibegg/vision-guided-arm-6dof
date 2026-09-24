@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
 )
 
-from arm.vision.camera import Camera
+from arm.vision.simulation_camera import SimulationCamera
 from arm.vision.detect import Detection, is_valid_detection
 
 from arm.ui.grounding_dino_worker import GroundingDinoWorker
@@ -31,11 +31,13 @@ from arm.config_loader import (
     load_app_config,
     load_grounding_dino_config,
     load_grounding_dino_weights,
-    load_yolo_model
+    load_yolo_model,
+    load_simulation_camera_config
 )
 
 APP_CONFIG = load_app_config()
 CAMERA_CONFIG = load_camera_config()
+SIMULATION_CAMERA_CONFIG = load_simulation_camera_config()
 YOLO_CONFIG = load_yolo_model()
 GROUNDING_DINO_CONFIG = load_grounding_dino_config()
 GROUNDING_DINO_WEIGHTS = load_grounding_dino_weights()
@@ -209,15 +211,10 @@ class MainWindow(QMainWindow):
         # Receive a configured camera class
         # And receive all model configs from main window (so one single import from main_window)
         self._camera_worker = CameraWorker(
-            lambda: Camera(
-                CAMERA_CONFIG.device,
-                CAMERA_CONFIG.width,
-                CAMERA_CONFIG.height,
-                CAMERA_CONFIG.fps,
-                # Required depending on the camera you are using
-                CAMERA_CONFIG.format,
+            lambda: SimulationCamera(
+                config = SIMULATION_CAMERA_CONFIG,
             ),
-            CAMERA_CONFIG.fps,
+            SIMULATION_CAMERA_CONFIG.fps,
             GROUNDING_DINO_CONFIG,
             GROUNDING_DINO_WEIGHTS,
             YOLO_CONFIG,
@@ -258,7 +255,26 @@ class MainWindow(QMainWindow):
     # Camera start button functionality
     @Slot()
     def _on_camera_started(self) -> None:
-        self._log_widget.addLine(LogLevel.INFO, "camera running")
+        # For all information on connection
+        config = SIMULATION_CAMERA_CONFIG
+
+        self._log_widget.addLine(
+            LogLevel.INFO,
+            f"successfully connected to CoppeliaSim\n                  at @ {config.host}:{config.port} on '{config.sensor_path}'"
+        )
+
+        if not self._camera_worker.is_simulation_running():
+            self._log_widget.addLine(
+                LogLevel.WARNING,
+                "start CoppeliaSim simulation to render frames",
+                Colour.YELLOW
+            )
+        else:
+            self._log_widget.addLine(
+                LogLevel.INFO,
+                "camera running",
+            )
+
         self._start_button.setEnabled(False)
         self._stop_button.setEnabled(True)
         self._detection_button.setEnabled(True)
@@ -286,7 +302,14 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_camera_error(self) -> None:
-        self._log_widget.addLine(LogLevel.ERROR, "camera connection failure", Colour.RED)
+        config = SIMULATION_CAMERA_CONFIG
+
+        self._log_widget.addLine(
+            LogLevel.ERROR,
+            f"failed to connect to {config.host}:{config.port} on '{config.sensor_path}'",
+            Colour.RED
+        )
+        
         self._camera_worker.clear_detections()
         self._camera_widget.clear_frame()
         self._start_button.setEnabled(True)

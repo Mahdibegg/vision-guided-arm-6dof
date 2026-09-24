@@ -6,7 +6,7 @@ from cv2 import cvtColor, COLOR_BGR2RGB
 from pathlib import Path
 from cv2 import cvtColor, COLOR_BGR2RGB
 
-from arm.vision.camera import Camera
+from arm.vision.simulation_camera import SimulationCamera
 from arm.vision.camera_types import Frame
 from arm.vision.detect import (
     Detection,
@@ -31,7 +31,7 @@ class CameraWorker(QObject):
     def __init__(
         self,
         # Create a new camera instance when called
-        camera_factory: Callable[[], Camera],
+        camera_factory: Callable[[], SimulationCamera],
         capture_fps: int,
         grounding_dino_config: str | Path,
         grounding_dino_weights: str | Path,
@@ -44,7 +44,7 @@ class CameraWorker(QObject):
         self._camera_factory = camera_factory
         self._interval_ms = max(1, round(1000 / capture_fps))
 
-        self._camera: Camera | None = None
+        self._camera: SimulationCamera | None = None
         self._timer: QTimer | None = None
 
         self._full_detection_enabled = False
@@ -232,6 +232,13 @@ class CameraWorker(QObject):
         self._target_object = target
 
         self.target_detected.emit(target)
+
+    @property
+    def is_simulation_running(self) -> bool:
+        """Check whether the active camera's simulation backend is running."""
+        if self._camera is None:
+            return False
+        return getattr(self._camera, "is_sim_running", True)
 
     def _close_camera(self) -> None:
         """Close and discard the current camera instance."""

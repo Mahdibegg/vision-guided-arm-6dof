@@ -133,3 +133,15 @@ class SimulationCamera:
     def close(self) -> None:
         """Close external OpenCV preview windows and detach."""
         cv.destroyAllWindows()
+
+    def is_sim_running(self) -> bool:
+        """Returns True if the simulation is actively running and advancing."""
+        try:
+            state = self._sim.getSimulationState()
+            # 0: stopped, 1: paused, >=2: advancing/running
+            stopped = getattr(self._sim, "simulation_stopped", 0)
+            paused = getattr(self._sim, "simulation_paused", 1)
+
+            return state not in (stopped, paused)
+        except Exception:
+            return False
