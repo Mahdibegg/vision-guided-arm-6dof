@@ -15,6 +15,8 @@ CONFIG_DIRECTORY = PROJECT_ROOT / "config"
 CAMERA_CONFIG_PATH = CONFIG_DIRECTORY / "camera.yaml"
 APP_CONFIG_PATH = CONFIG_DIRECTORY / "app_config.yaml"
 YOLO_CONFIG_PATH = CONFIG_DIRECTORY / "yolo_model.yaml"
+ARM_CONFIG_PATH = CONFIG_DIRECTORY / "robot_arm.yaml"
+SIMULATION_CONFIG_PATH = CONFIG_DIRECTORY / "simulation.yaml"
 
 # Path to grounding dino model configs/weights
 GROUNDING_DINO_DIRECTORY = (
@@ -22,7 +24,6 @@ GROUNDING_DINO_DIRECTORY = (
     / "models"
     / "grounding_dino"
 )
-
 GROUNDING_DINO_CONFIG_PATH = (
     GROUNDING_DINO_DIRECTORY
     / "GroundingDINO_SwinT_OGC.py"
@@ -47,7 +48,7 @@ def load_yaml(path: Path) -> dict[str, Any]:
 # Loading camera configuration values
 
 # When returning this type to main, configuration values are stored together
-@dataclass
+@dataclass(frozen=True, slots=True)
 class CameraConfig:
     device: int
     width: int
@@ -61,8 +62,6 @@ class SimulationCameraConfig:
   width: int
   height: int
   fps: int
-  host: str
-  port: int
 
 def load_camera_config() -> CameraConfig:
     data = load_yaml(CAMERA_CONFIG_PATH)["camera"]
@@ -82,7 +81,45 @@ def load_simulation_camera_config() -> SimulationCameraConfig:
         sensor_path = data["sensor_path"],
         width = data["width"],
         height = data["height"],
-        fps = data["fps"],
+        fps = data["fps"]
+    )
+
+# Loading arm configuration values
+
+@dataclass(frozen=True, slots=True)
+class ArmConfig:
+    target_path: str
+
+    serial_port: str
+    baudrate: int
+
+    approach_height_offset: float
+    max_velocity: float
+    step_size: float
+
+def load_arm_config() -> ArmConfig:
+    data = load_yaml(ARM_CONFIG_PATH)["arm"]
+       
+    return ArmConfig(
+        target_path = data["target_path"],
+        serial_port = data["serial_port"],
+        baudrate = data["baudrate"],
+        approach_height_offset = data["approach_height_offset"],
+        max_velocity = data["max_velocity"],
+        step_size = data["step_size"]
+    )
+
+# Loading simulation configuration values
+
+@dataclass(frozen=True, slots=True)
+class SimulationConfig:
+    host: str
+    port: int
+
+def load_simulation_config() -> SimulationConfig:
+    data = load_yaml(SIMULATION_CONFIG_PATH)["connection_details"]
+    
+    return SimulationConfig(
         host = data["host"],
         port = data["port"]
     )
@@ -125,11 +162,11 @@ def load_yolo_model() -> str:
 
 # App configuration values
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class LogConfig:
     max_lines: int
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class StyleConfig:
     camera_widget: str
     log_widget: str
@@ -137,7 +174,7 @@ class StyleConfig:
     button_widget: str
     command_bar: str
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class AppConfig:
     log: LogConfig
     styles: StyleConfig

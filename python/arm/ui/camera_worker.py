@@ -144,39 +144,6 @@ class CameraWorker(QObject):
         self.target_detected.emit(None)
 
     @Slot()
-    def _read_frame(self) -> None:
-        """
-        Read and emit a single frame while handling multiple threads for the
-        separate grounding dino model and camera.
-        """
-        if self._camera is None:
-            return
-
-        try:
-            frame = self._camera.read()
-
-            should_request_grounding = (
-                self._detection_description is not None
-                and self._grounding_dino_ready
-                and not self._grounding_dino_busy
-            )
-
-            if should_request_grounding:
-                self._grounding_dino_busy = True
-
-                self.grounding_dino_requested.emit(
-                    frame.copy(),
-                    self._detection_description,
-                )
-
-            updated_frame = self._process_frame(frame)
-            self.frame_ready.emit(updated_frame)
-
-        except Exception as error:
-            self.stop()
-            self.error.emit(str(error))
-
-    @Slot()
     def set_grounding_dino_ready(self) -> None:
         """Mark Grounding DINO as ready to receive requests."""
 
@@ -239,6 +206,39 @@ class CameraWorker(QObject):
         if self._camera is None:
             return False
         return getattr(self._camera, "is_sim_running", True)
+
+    @Slot()
+    def _read_frame(self) -> None:
+        """
+        Read and emit a single frame while handling multiple threads for the
+        separate grounding dino model and camera.
+        """
+        if self._camera is None:
+            return
+
+        try:
+            frame = self._camera.read()
+
+            should_request_grounding = (
+                self._detection_description is not None
+                and self._grounding_dino_ready
+                and not self._grounding_dino_busy
+            )
+
+            if should_request_grounding:
+                self._grounding_dino_busy = True
+
+                self.grounding_dino_requested.emit(
+                    frame.copy(),
+                    self._detection_description,
+                )
+
+            updated_frame = self._process_frame(frame)
+            self.frame_ready.emit(updated_frame)
+
+        except Exception as error:
+            self.stop()
+            self.error.emit(str(error))
 
     def _close_camera(self) -> None:
         """Close and discard the current camera instance."""

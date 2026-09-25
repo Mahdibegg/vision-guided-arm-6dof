@@ -5,6 +5,7 @@ from typing import Any
 
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient # type: ignore
 from arm.config_loader import SimulationCameraConfig
+from arm.simulation.connection import connect_to_simulation
 from .camera_types import Frame
 
 class SimulationCamera:
@@ -23,15 +24,7 @@ class SimulationCamera:
             self._expected_height = config.height
             self._fps = config.fps
 
-            try:
-                # Connect to CoppeliaSim Remote API server using loaded host and port
-                self._client = RemoteAPIClient(host=config.host, port=config.port)
-                self._sim: Any = self._client.require("sim")
-            except Exception as e:
-                raise RuntimeError(
-                    f"CAM_SIM_ERROR: Could not establish connection to CoppeliaSim at "
-                    f"{config.host}:{config.port} - {e}"
-                ) from e
+            self._client, self._sim = connect_to_simulation()
 
             try:
                 # Query object handle for the vision sensor

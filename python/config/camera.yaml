@@ -1,4 +1,3 @@
-# 720p camera settings with first available camera (device 0)
 camera:
   device: 0
   width: 1280
@@ -11,5 +10,3 @@ simulation_camera:
   width: 1280
   height: 720
   fps: 30
-  host: "localhost"
-  port: 23000

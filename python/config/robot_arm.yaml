@@ -1,0 +1,9 @@
+arm:
+  target_path: "/Robot_arm"
+
+  serial_port: null
+  baudrate: 115200
+
+  approach_height_offset: 0.20
+  max_velocity: 0.5
+  step_size: 0.005

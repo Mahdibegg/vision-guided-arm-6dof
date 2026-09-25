@@ -32,13 +32,17 @@ from arm.config_loader import (
     load_grounding_dino_config,
     load_grounding_dino_weights,
     load_yolo_model,
-    load_simulation_camera_config
+    load_simulation_camera_config,
+    load_arm_config,
+    load_simulation_config
 )
 
 APP_CONFIG = load_app_config()
 CAMERA_CONFIG = load_camera_config()
 SIMULATION_CAMERA_CONFIG = load_simulation_camera_config()
 YOLO_CONFIG = load_yolo_model()
+ARM_CONFIG = load_arm_config()
+SIMULATION_CONFIG = load_simulation_config()
 GROUNDING_DINO_CONFIG = load_grounding_dino_config()
 GROUNDING_DINO_WEIGHTS = load_grounding_dino_weights()
 
@@ -58,11 +62,54 @@ class MainWindow(QMainWindow):
         self._target_reported = False
         self._camera_running = False
         self._strict_detection = False
+        self._arm_linked = False
 
         self._create_widgets()
         self._create_layout()
         self._create_camera_worker()
         self._connect_signals()
+
+    @Slot(str)
+    def request_grounding_dino_detection(self, description: str) -> None:
+        """Request Grounding DINO detection for a specific object description."""
+        if self._camera_worker is not None:
+            # Set the description in camera worker
+            self._camera_worker.set_detection_description(description)
+            
+            # Trigger detection in background thread
+            self._camera_worker._grounding_dino_worker.run_detection()
+
+    @Slot()
+    def clear_grounding_dino(self) -> None:
+        """Clear Grounding DINO detection state."""
+        if self._camera_worker is not None:
+            self._camera_worker.clear_detections()
+        
+    # Close any threads that are running when exiting the program
+    def closeEvent(self, event: QCloseEvent) -> None:
+
+        camera_thread = getattr(self, "_camera_thread", None)
+        grounding_thread = getattr(
+            self,
+            "_grounding_dino_thread",
+            None,
+        )
+
+        if camera_thread is not None and camera_thread.isRunning():
+            QMetaObject.invokeMethod(
+                self._camera_worker,
+                "stop",
+                Qt.ConnectionType.BlockingQueuedConnection,
+            )
+
+            camera_thread.quit()
+            camera_thread.wait()
+
+        if grounding_thread is not None and grounding_thread.isRunning():
+            grounding_thread.quit()
+            grounding_thread.wait()
+
+        event.accept()
 
     # Private layout/widget setup functions
 
@@ -99,6 +146,7 @@ class MainWindow(QMainWindow):
 
         self._clear_log_button = QPushButton("Clear Log")
         self._link_arm_button = QPushButton("Link Arm")
+        self._link_arm_button.setEnabled(False)
 
         self._start_button = QPushButton("Start Camera")
         self._stop_button = QPushButton("Stop Camera")
@@ -255,12 +303,11 @@ class MainWindow(QMainWindow):
     # Camera start button functionality
     @Slot()
     def _on_camera_started(self) -> None:
-        # For all information on connection
-        config = SIMULATION_CAMERA_CONFIG
 
         self._log_widget.addLine(
             LogLevel.INFO,
-            f"successfully connected to CoppeliaSim\n                  at @ {config.host}:{config.port} on '{config.sensor_path}'"
+            "successfully connected to CoppeliaSim\n                  "
+            f"at @ {SIMULATION_CONFIG.host}:{SIMULATION_CONFIG.port} on '{SIMULATION_CAMERA_CONFIG.sensor_path}'"
         )
 
         if not self._camera_worker.is_simulation_running():
@@ -279,6 +326,7 @@ class MainWindow(QMainWindow):
         self._stop_button.setEnabled(True)
         self._detection_button.setEnabled(True)
         self._strict_detection_button.setEnabled(True)
+        self._link_arm_button.setEnabled(True)
 
         self._command_input.clear()
         self._camera_running = True
@@ -293,6 +341,7 @@ class MainWindow(QMainWindow):
         self._stop_button.setEnabled(False)
         self._detection_button.setChecked(False)
         self._detection_button.setEnabled(False)
+        self._link_arm_button.setEnabled(False)
 
         self._strict_detection_button.setChecked(False)
         self._strict_detection_button.setEnabled(False)
@@ -318,6 +367,7 @@ class MainWindow(QMainWindow):
         self._detection_button.setEnabled(False)
         self._strict_detection_button.setChecked(False)
         self._strict_detection_button.setEnabled(False)
+        self._link_arm_button.setEnabled(False)
 
     # Command input functionality
 
@@ -357,6 +407,7 @@ class MainWindow(QMainWindow):
 
     # Link arm button functionality
     def _on_link_arm_button_clicked(self) -> None:
+
         # For now just output a message
         self._log_widget.addLine(LogLevel.DEBUG, "linking arm...")
         self._log_widget.addLine(LogLevel.ERROR, "failed to connect to arm", Colour.RED)
@@ -414,45 +465,3 @@ class MainWindow(QMainWindow):
             )
 
             self._camera_worker.clear_detections()
-
-    @Slot(str)
-    def request_grounding_dino_detection(self, description: str) -> None:
-        """Request Grounding DINO detection for a specific object description."""
-        if self._camera_worker is not None:
-            # Set the description in camera worker
-            self._camera_worker.set_detection_description(description)
-            
-            # Trigger detection in background thread
-            self._camera_worker._grounding_dino_worker.run_detection()
-
-    @Slot()
-    def clear_grounding_dino(self) -> None:
-        """Clear Grounding DINO detection state."""
-        if self._camera_worker is not None:
-            self._camera_worker.clear_detections()
-        
-    # Close any threads that are running when exiting the program
-    def closeEvent(self, event: QCloseEvent) -> None:
-
-        camera_thread = getattr(self, "_camera_thread", None)
-        grounding_thread = getattr(
-            self,
-            "_grounding_dino_thread",
-            None,
-        )
-
-        if camera_thread is not None and camera_thread.isRunning():
-            QMetaObject.invokeMethod(
-                self._camera_worker,
-                "stop",
-                Qt.ConnectionType.BlockingQueuedConnection,
-            )
-
-            camera_thread.quit()
-            camera_thread.wait()
-
-        if grounding_thread is not None and grounding_thread.isRunning():
-            grounding_thread.quit()
-            grounding_thread.wait()
-
-        event.accept()

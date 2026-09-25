@@ -1,0 +1,3 @@
+connection_details:
+  host: "localhost"
+  port: 23000
