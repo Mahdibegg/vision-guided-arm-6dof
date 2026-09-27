@@ -4,7 +4,7 @@ from collections.abc import Callable
 from PySide6.QtCore import QObject, Signal, Slot
 
 from arm.model.robot_arm import RobotArm, Point
-
+from arm.vision.detect import Detection
 
 class RobotArmWorker(QObject):
     """
@@ -41,7 +41,12 @@ class RobotArmWorker(QObject):
     def arm(self) -> RobotArm | None:
         """Return the current RobotArm instance."""
         return self._robot_arm
-
+    
+    @property
+    def robot_arm(self) -> RobotArm | None:
+        """Expose the active RobotArm instance so the main thread can check link status."""
+        return self._robot_arm
+    
     @Slot()
     def link(self) -> None:
         """Create a RobotArm instance and connect it to the running simulation."""
@@ -65,10 +70,20 @@ class RobotArmWorker(QObject):
         self._robot_arm = None
         self.link_broken.emit()
 
-    @property
-    def robot_arm(self) -> RobotArm | None:
-        """Expose the active RobotArm instance so the main thread can check link status."""
-        return self._robot_arm
+    @Slot(object)
+    def pick_target(self, target: Detection) -> None:
+        """Move to and pick up a detected target, using its pixel bounding box centre."""
+        if target is None:
+            self.error.emit("Cannot pick: no target detected.")
+            return
+ 
+        x1, y1, x2, y2 = target.x1, target.y1, target.x2, target.y2
+        u = int((x1 + x2) / 2)
+        v = int((y1 + y2) / 2)
+ 
+        self.move_to_pixel(u, v)
+        
+        # Final action is to pick up the target and drop
 
     # Moving above a target point (the "approach" position)
     @Slot(object)

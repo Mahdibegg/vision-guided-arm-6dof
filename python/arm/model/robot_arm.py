@@ -1,5 +1,6 @@
 import math as math
 import time
+import numpy as np
 from typing import Any, TypeAlias
 
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient # type: ignore
@@ -56,11 +57,29 @@ class RobotArm:
         """Return whether CoppeliaSim client connection is active."""
         return self._connection.is_simulation_running()
 
+    def read_depth(self) -> np.ndarray:
+        """
+        Return the raw metric depth map (distance in meters) for this arm's
+        own connection, mirroring SimulationCamera.read_depth().
+        """
+        try:
+            # options=1 returns true metric distances in meters as floats
+            depth_bytes, resolution = self._sim.getVisionSensorDepth(self._sensor_handle, 1)
+        except Exception as e:
+            raise RuntimeError(
+                f"ARM_SIM_ERROR: Failed to retrieve depth buffer: {e}"
+            ) from e
+ 
+        depth_map: np.ndarray = np.frombuffer(depth_bytes, dtype=np.float32).reshape(
+            (resolution[1], resolution[0])
+        )
+        return np.flipud(depth_map)
+
     # Applying the matrix transformation to a 2d point
     def pixel_to_robot(self, u: float, v: float) -> Point:
         # Linear transformation shorthand
         m = self._camera_to_robot
-        depth = self._simulation_camera.read_depth()
+        depth = self.read_depth()
 
         D = float(depth[v, u])
 
@@ -77,8 +96,8 @@ class RobotArm:
         return [x_robot, y_robot, z_robot]
 
     # Moving the target smoothly to a destination
-    def move_target_smoothly(self, target: Point, robot_base: str, destination: Point) -> None:
-        start = self._sim.getObjectPosition(target, robot_base)
+    def move_target_smoothly(self, destination: Point) -> None:
+        start = self._sim.getObjectPosition(self._target, self._robot_base)
 
         for i in range(1, self._steps_count + 1):
             t = i / self._steps_count

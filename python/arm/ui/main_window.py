@@ -63,6 +63,7 @@ class MainWindow(QMainWindow):
     link_arm_requested = Signal()
     break_arm_link_requested = Signal()
     move_arm_to_pixel_requested = Signal(int, int)
+    pick_target_requested = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -319,6 +320,8 @@ class MainWindow(QMainWindow):
         self._robot_arm_worker.error.connect(self._on_arm_error)
         self._robot_arm_worker.movement_started.connect(self._on_arm_movement_started)
         self._robot_arm_worker.movement_finished.connect(self._on_arm_movement_finished)
+        
+        self.pick_target_requested.connect(self._robot_arm_worker.pick_target)
 
     # Camera worker functionality
 
@@ -399,6 +402,8 @@ class MainWindow(QMainWindow):
         self._strict_detection_button.setEnabled(True)
         self._link_arm_button.setEnabled(True)
 
+        self._camera_running = True
+
         self._command_input.clear()
 
     # Camera end button functionality
@@ -414,6 +419,8 @@ class MainWindow(QMainWindow):
         self._strict_detection_button.setChecked(False)
         self._strict_detection_button.setEnabled(False)
         self._link_arm_button.setEnabled(False)
+
+        self._camera_running = False
 
         self._command_input.clear()
 
@@ -438,6 +445,10 @@ class MainWindow(QMainWindow):
         self._strict_detection_button.setChecked(False)
         self._strict_detection_button.setEnabled(False)
         self._link_arm_button.setEnabled(False)
+
+        self._camera_running = False
+
+        self._command_input.clear()
 
         # No vision should result in break arm link
         if self._arm_linked:
@@ -594,6 +605,10 @@ class MainWindow(QMainWindow):
                 f"found with {target.confidence:.0%} confidence",
                 Colour.GREEN
             )
+            
+            if self._arm_linked:
+                self.pick_target_requested.emit(target)
+
         else:
             # Use the available target to report error then clear the target data so nothing is drawn
             self._log_widget.addLine(LogLevel.ERROR,

@@ -106,24 +106,6 @@ class SimulationCamera:
 
         return bgr_frame
 
-
-    def read_depth(self) -> np.ndarray:
-        """
-        Return the raw metric depth map (distance in meters) for LiDAR/depth operations.
-        """
-        try:
-            # options=1 returns true metric distances in meters as floats
-            depth_bytes, resolution = self._sim.getVisionSensorDepth(self._sensor_handle, 1)
-        except Exception as e:
-            raise RuntimeError(
-                f"CAM_SIM_ERROR: Failed to retrieve depth buffer: {e}"
-            ) from e
-
-        depth_map: np.ndarray = np.frombuffer(depth_bytes, dtype=np.float32).reshape(
-            (resolution[1], resolution[0])
-        )
-        return np.flipud(depth_map)
-
     def display(self, frame: Frame) -> bool:
             """Display camera frame on an OpenCV window; returns False if 'q' is pressed."""
             cv.namedWindow("Simulation Camera", cv.WINDOW_NORMAL)
