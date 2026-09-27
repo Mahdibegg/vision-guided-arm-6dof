@@ -201,11 +201,9 @@ class CameraWorker(QObject):
         self.target_detected.emit(target)
 
     @property
-    def is_simulation_running(self) -> bool:
-        """Check whether the active camera's simulation backend is running."""
-        if self._camera is None:
-            return False
-        return getattr(self._camera, "is_sim_running", True)
+    def camera(self) -> SimulationCamera | None:
+        """Expose the active camera instance for spatial calibration."""
+        return self._camera
 
     @Slot()
     def _read_frame(self) -> None:

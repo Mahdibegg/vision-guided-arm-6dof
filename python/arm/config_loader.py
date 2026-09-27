@@ -34,7 +34,6 @@ GROUNDING_DINO_WEIGHTS_PATH = (
     / "groundingdino_swint_ogc.pth"
 )
 
-
 # Helper function used to load yaml files as well as error handle non existent paths
 def load_yaml(path: Path) -> dict[str, Any]:
     with path.open("r", encoding=UTF8) as file:
@@ -88,6 +87,7 @@ def load_simulation_camera_config() -> SimulationCameraConfig:
 
 @dataclass(frozen=True, slots=True)
 class ArmConfig:
+    model_path: str
     target_path: str
 
     serial_port: str
@@ -96,17 +96,20 @@ class ArmConfig:
     approach_height_offset: float
     max_velocity: float
     step_size: float
+    steps_count: int
 
 def load_arm_config() -> ArmConfig:
     data = load_yaml(ARM_CONFIG_PATH)["arm"]
        
     return ArmConfig(
+        model_path = data["model_path"],
         target_path = data["target_path"],
         serial_port = data["serial_port"],
         baudrate = data["baudrate"],
         approach_height_offset = data["approach_height_offset"],
         max_velocity = data["max_velocity"],
-        step_size = data["step_size"]
+        step_size = data["step_size"],
+        steps_count = data["steps_count"]
     )
 
 # Loading simulation configuration values

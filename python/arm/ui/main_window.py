@@ -17,12 +17,17 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
 )
 
+from arm.simulation.connection import connect_to_simulation
+
+from arm.model.robot_arm import RobotArm
+
 from arm.vision.simulation_camera import SimulationCamera
 from arm.vision.detect import Detection, is_valid_detection
 
 from arm.ui.grounding_dino_worker import GroundingDinoWorker
 from arm.ui.camera_widget import CameraWidget
 from arm.ui.camera_worker import CameraWorker
+from arm.ui.robot_arm_worker import RobotArmWorker
 from arm.ui.log_widget import LogWidget, LogLevel, Colour
 from arm.ui.sanitize_input import SanitizeInput
 
@@ -50,8 +55,11 @@ class MainWindow(QMainWindow):
     start_camera_requested = Signal()
     stop_camera_requested = Signal()
     full_detection_requested = Signal(bool)
-
     detection_description_requested = Signal(str)
+
+    link_arm_requested = Signal()
+    break_arm_link_requested = Signal()
+    move_arm_to_pixel_requested = Signal(int, int)
 
     def __init__(self) -> None:
         super().__init__()
@@ -63,11 +71,16 @@ class MainWindow(QMainWindow):
         self._camera_running = False
         self._strict_detection = False
         self._arm_linked = False
-
+        
         self._create_widgets()
         self._create_layout()
+        self._create_robot_arm_worker()
         self._create_camera_worker()
         self._connect_signals()
+
+        # Validate the connection to the simulation at the beginning of the application
+        self._client, self._sim = connect_to_simulation()
+        self._log_simulation_connection()
 
     @Slot(str)
     def request_grounding_dino_detection(self, description: str) -> None:
@@ -109,9 +122,63 @@ class MainWindow(QMainWindow):
             grounding_thread.quit()
             grounding_thread.wait()
 
+        robot_arm_thread = getattr(self, "_robot_arm_thread", None)
+
+        if robot_arm_thread is not None and robot_arm_thread.isRunning():
+            QMetaObject.invokeMethod(
+                self._robot_arm_worker,
+                "break_link",
+                Qt.ConnectionType.BlockingQueuedConnection,
+            )
+
+            robot_arm_thread.quit()
+            robot_arm_thread.wait()
+
         event.accept()
 
     # Private layout/widget setup functions
+    def _reset_attr(self) -> None:
+        self._target_reported = False
+        self._camera_running = False
+        self._strict_detection = False
+        self._arm_linked = False
+
+    def _is_simulation_running(self) -> bool:
+            """Checks the simulation state directly using MainWindow's shared connection."""
+            # 1. Guard against uninitialized or dropped connection
+            if not getattr(self, "_sim", None):
+                return False
+                
+            try:
+                state = self._sim.getSimulationState()
+                
+                # 0: stopped, 1: paused, >=2: advancing/running
+                stopped = getattr(self._sim, "simulation_stopped", 0)
+                paused = getattr(self._sim, "simulation_paused", 1)
+
+                return state not in (stopped, paused)
+                
+            except Exception as e:
+                # Print the error to terminal so it doesn't fail silently
+                print(f"Simulation state check failed: {e}")
+                return False
+
+    def _log_simulation_connection(self) -> bool:
+        """Check for connection on CoppeliaSim (is it open)."""
+        if self._client and self._sim:
+            self._log_widget.addLine(
+                LogLevel.INFO,
+                "successfully connected to CoppeliaSim\n                  "
+                f"at @ {SIMULATION_CONFIG.host}:{SIMULATION_CONFIG.port} on '{SIMULATION_CAMERA_CONFIG.sensor_path}'"
+            )
+            return True
+        else:
+            self._log_widget.addLine(
+                LogLevel.ERROR,
+                "failed to connect to CoppeliaSim\n                  "
+                f"at @ {SIMULATION_CONFIG.host}:{SIMULATION_CONFIG.port} on '{SIMULATION_CAMERA_CONFIG.sensor_path}'"
+            )
+            return False
 
     # Keep the init function small by having all the widgets in a private function
     def _create_widgets(self) -> None:
@@ -146,6 +213,8 @@ class MainWindow(QMainWindow):
 
         self._clear_log_button = QPushButton("Clear Log")
         self._link_arm_button = QPushButton("Link Arm")
+        self._link_arm_button.setCheckable(True)
+        self._link_arm_button.setChecked(False)
         self._link_arm_button.setEnabled(False)
 
         self._start_button = QPushButton("Start Camera")
@@ -250,6 +319,17 @@ class MainWindow(QMainWindow):
 
         self._camera_worker.target_detected.connect(self._on_target_detected)
 
+        # Robot arm requests
+        self.link_arm_requested.connect(self._robot_arm_worker.link)
+        self.break_arm_link_requested.connect(self._robot_arm_worker.break_link)
+
+        # Robot arm worker functionality
+        self._robot_arm_worker.linked.connect(self._on_arm_linked)
+        self._robot_arm_worker.link_broken.connect(self._on_arm_link_broken)
+        self._robot_arm_worker.error.connect(self._on_arm_error)
+        self._robot_arm_worker.movement_started.connect(self._on_arm_movement_started)
+        self._robot_arm_worker.movement_finished.connect(self._on_arm_movement_finished)
+
     # Camera worker functionality
 
     # Create a camera worker private to main window using config values
@@ -260,6 +340,8 @@ class MainWindow(QMainWindow):
         # And receive all model configs from main window (so one single import from main_window)
         self._camera_worker = CameraWorker(
             lambda: SimulationCamera(
+                self._client,
+                self._sim,
                 config = SIMULATION_CAMERA_CONFIG,
             ),
             SIMULATION_CAMERA_CONFIG.fps,
@@ -304,13 +386,15 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_camera_started(self) -> None:
 
-        self._log_widget.addLine(
-            LogLevel.INFO,
-            "successfully connected to CoppeliaSim\n                  "
-            f"at @ {SIMULATION_CONFIG.host}:{SIMULATION_CONFIG.port} on '{SIMULATION_CAMERA_CONFIG.sensor_path}'"
-        )
+        # Log the connection to CoppeliaSim on the widget
+        if not self._client or not self._sim:
+            # If no client or sim object, connect to CoppeliaSim and report status
+            self._client, self._sim = connect_to_simulation()
+            new_status = self._log_simulation_connection()
+            if not new_status:
+                return
 
-        if not self._camera_worker.is_simulation_running():
+        if not self._is_simulation_running():
             self._log_widget.addLine(
                 LogLevel.WARNING,
                 "start CoppeliaSim simulation to render frames",
@@ -329,7 +413,6 @@ class MainWindow(QMainWindow):
         self._link_arm_button.setEnabled(True)
 
         self._command_input.clear()
-        self._camera_running = True
 
     # Camera end button functionality
     @Slot()
@@ -347,7 +430,13 @@ class MainWindow(QMainWindow):
         self._strict_detection_button.setEnabled(False)
 
         self._command_input.clear()
-        self._camera_running = False
+
+        # No vision should result in break arm link
+        if self._arm_linked:
+            self.break_arm_link_requested.emit()
+
+        # When camera stops reset all these attributes
+        self._reset_attr()
 
     @Slot(str)
     def _on_camera_error(self) -> None:
@@ -368,6 +457,81 @@ class MainWindow(QMainWindow):
         self._strict_detection_button.setChecked(False)
         self._strict_detection_button.setEnabled(False)
         self._link_arm_button.setEnabled(False)
+
+        # No vision should result in break arm link
+        if self._arm_linked:
+            self.break_arm_link_requested.emit()
+
+        # When camera stops reset all these attributes
+        self._reset_attr()
+
+    # Robot arm worker functionality
+
+    def _create_robot_arm_worker(self) -> None:
+        self._robot_arm_thread = QThread(self)
+
+        # Don't construct the RobotArm eagerly - link() builds it on the
+        # worker's own thread, once the camera (and its vision sensor) is active
+        self._robot_arm_worker = RobotArmWorker(
+            lambda: RobotArm(
+                sim_client=self._client,
+                sim=self._sim,
+                simulation_camera=self._camera_worker.camera,
+                config=ARM_CONFIG,
+            )
+        )
+
+        self._robot_arm_worker.moveToThread(self._robot_arm_thread)
+
+        self._robot_arm_thread.finished.connect(self._robot_arm_worker.deleteLater)
+
+        self._robot_arm_thread.start()
+
+    # Link arm button functionality
+    @Slot()
+    def _on_link_arm_button_clicked(self) -> None:
+        # Check for existing camera as it indicates running simulation
+        active_camera = self._camera_worker.camera
+
+        # No running simulation check since its assumed to be running
+        if active_camera is None:
+            self._log_widget.addLine(
+                LogLevel.ERROR,
+                "Cannot link arm: Vision sensor is not running.",
+                Colour.RED
+            )
+            return
+
+        if self._arm_linked:
+            self.break_arm_link_requested.emit()
+        else:
+            self.link_arm_requested.emit()
+
+    @Slot()
+    def _on_arm_linked(self) -> None:
+        self._arm_linked = True
+        self._link_arm_button.setChecked(True)
+        self._log_widget.addLine(LogLevel.INFO, "Robot arm linked successfully.", Colour.GREEN)
+
+    @Slot()
+    def _on_arm_link_broken(self) -> None:
+        self._arm_linked = False
+        self._link_arm_button.setChecked(False)
+        self._log_widget.addLine(LogLevel.INFO, "Robot arm link broken.", Colour.YELLOW)
+
+    @Slot(str)
+    def _on_arm_error(self, message: str) -> None:
+        self._arm_linked = False
+        self._link_arm_button.setChecked(False)
+        self._log_widget.addLine(LogLevel.ERROR, f"Robot arm error: {message}", Colour.RED)
+
+    @Slot()
+    def _on_arm_movement_started(self) -> None:
+        self._link_arm_button.setEnabled(False)
+
+    @Slot(object)
+    def _on_arm_movement_finished(self, robot_point) -> None:
+        self._link_arm_button.setEnabled(True)
 
     # Command input functionality
 
@@ -404,13 +568,6 @@ class MainWindow(QMainWindow):
         self._log_widget.addLine(LogLevel.DEBUG, "parsing command data...")
         
         self._command_input.clear()
-
-    # Link arm button functionality
-    def _on_link_arm_button_clicked(self) -> None:
-
-        # For now just output a message
-        self._log_widget.addLine(LogLevel.DEBUG, "linking arm...")
-        self._log_widget.addLine(LogLevel.ERROR, "failed to connect to arm", Colour.RED)
 
     # Full detection mode for identifying all objects
     @Slot(bool)

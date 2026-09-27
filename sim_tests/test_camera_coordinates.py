@@ -14,60 +14,29 @@ sensor = sim.getObject("/Vision_sensor")
 robot_base = sim.getObject("/UR5")
 target = sim.getObject("/UR5/target")
 
+# Use for debugging just incase ----------
 cube = sim.getObject("/Object")
-
-actual_cube_position = sim.getObjectPosition(
-    cube,
-    robot_base
-)
-
-print(
-    "Actual cube centre:",
-    [round(x, 4) for x in actual_cube_position]
-)
-
-# -----------------------
-# GET RGB IMAGE
-# -----------------------
+actual_cube_position = sim.getObjectPosition(cube, robot_base)
 
 image, resolution = sim.getVisionSensorImg(sensor)
 
 width, height = resolution
 
-frame = np.frombuffer(image, dtype=np.uint8)
-frame = frame.reshape(height, width, 3)
-
-frame = cv2.flip(frame, 0)
-frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-
-# -----------------------
-# GET DEPTH IMAGE
-# -----------------------
-
+# Obtain the depth of the camera
 depth_bytes, depth_resolution = sim.getVisionSensorDepth(sensor, 1)
-
 depth_array = array.array("f")
 depth_array.frombytes(depth_bytes)
-
 depth = np.array(depth_array, dtype=np.float32)
 depth = depth.reshape(height, width)
 
 depth = cv2.flip(depth, 0)
 
-# -----------------------
-# CAMERA PROPERTIES
-# -----------------------
-
 view_angle = sim.getObjectFloatParam(
     sensor,
     sim.visionfloatparam_perspective_angle
 )
-
 horizontal_fov = view_angle
-
-vertical_fov = 2 * math.atan(
-    (height / width) * math.tan(horizontal_fov / 2)
-)
+vertical_fov = 2 * math.atan((height / width) * math.tan(horizontal_fov / 2))
 
 cx = width / 2
 cy = height / 2
@@ -75,14 +44,10 @@ cy = height / 2
 fx = width / (2 * math.tan(horizontal_fov / 2))
 fy = height / (2 * math.tan(vertical_fov / 2))
 
-# Camera -> Robot transform
+# Using CoppeliaSim API to obtain a matrix calibrating sensor and robot_base
 m = sim.getObjectMatrix(sensor, robot_base)
 
-
-# -----------------------
-# PIXEL -> ROBOT XYZ
-# -----------------------
-
+# Applying the matrix transformation to a 2d point
 def pixel_to_robot(u, v):
 
     D = float(depth[v, u])
@@ -97,57 +62,14 @@ def pixel_to_robot(u, v):
     y_robot = m[4] * x_cam + m[5] * y_cam + m[6] * z_cam + m[7]
     z_robot = m[8] * x_cam + m[9] * y_cam + m[10] * z_cam + m[11]
 
-    print("\n--- CLICKED POINT ---")
-    print("Pixel:", u, v)
-    print("Depth:", D)
-
-    print(
-        "Camera XYZ:",
-        round(x_cam, 4),
-        round(y_cam, 4),
-        round(z_cam, 4)
-    )
-
-    print(
-        "Robot XYZ:",
-        round(x_robot, 4),
-        round(y_robot, 4),
-        round(z_robot, 4)
-    )
-
     return [x_robot, y_robot, z_robot]
 
-
-# -----------------------
-# MOUSE CALLBACK
-# -----------------------
-
-def mouse_callback(event, x, y, flags, param):
-
-    if event == cv2.EVENT_LBUTTONDOWN:
-
-        robot_point = pixel_to_robot(x, y)
-
-        approach = [
-            robot_point[0],
-            robot_point[1],
-            robot_point[2] + APPROACH_HEIGHT
-        ]
-
-        print("Approach position:", approach)
-
-        move_target_smoothly(
-            target,
-            robot_base,
-            approach
-        )
-
+# Moving the target smoothly to a destination
 def move_target_smoothly(target, robot_base, destination, steps=100):
 
     start = sim.getObjectPosition(target, robot_base)
 
     for i in range(1, steps + 1):
-
         t = i / steps
 
         new_position = [
@@ -163,15 +85,3 @@ def move_target_smoothly(target, robot_base, destination, steps=100):
         )
 
         time.sleep(0.01)
-
-cv2.namedWindow("CoppeliaSim Camera")
-cv2.setMouseCallback("CoppeliaSim Camera", mouse_callback)
-
-while True:
-
-    cv2.imshow("CoppeliaSim Camera", frame)
-
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        break
-
-cv2.destroyAllWindows()

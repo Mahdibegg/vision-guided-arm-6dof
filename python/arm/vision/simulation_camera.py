@@ -5,7 +5,6 @@ from typing import Any
 
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient # type: ignore
 from arm.config_loader import SimulationCameraConfig
-from arm.simulation.connection import connect_to_simulation
 from .camera_types import Frame
 
 class SimulationCamera:
@@ -17,14 +16,14 @@ class SimulationCamera:
     Camera interface for modular use across vision and UI workers.
     """
 
-    def __init__(self, config: SimulationCameraConfig) -> None:
+    def __init__(self, sim_client: RemoteAPIClient, sim: Any, config: SimulationCameraConfig) -> None:
             self._config = config
             self._sensor_path = config.sensor_path
             self._expected_width = config.width
             self._expected_height = config.height
             self._fps = config.fps
 
-            self._client, self._sim = connect_to_simulation()
+            self._client, self._sim = sim_client, sim
 
             try:
                 # Query object handle for the vision sensor
@@ -35,18 +34,18 @@ class SimulationCamera:
                 ) from e
 
             # Query and validate configured resolution on the sensor
-            res_x = self._sim.getObjectInt32Param(
+            self._res_x = self._sim.getObjectInt32Param(
                 self._sensor_handle,
                 self._sim.visionintparam_resolution_x
             )
-            res_y = self._sim.getObjectInt32Param(
+            self._res_y = self._sim.getObjectInt32Param(
                 self._sensor_handle,
                 self._sim.visionintparam_resolution_y
             )
 
-            if res_x != self._expected_width or res_y != self._expected_height:
+            if self._res_x != self._expected_width or self._res_y != self._expected_height:
                 warnings.warn(
-                    f"CAM_SIM_WARNING: Sensor resolution ({res_x}x{res_y}) does not match "
+                    f"CAM_SIM_WARNING: Sensor resolution ({self._res_x}x{self._res_y}) does not match "
                     f"config specification ({self._expected_width}x{self._expected_height}).",
                     RuntimeWarning,
                 )
@@ -59,6 +58,16 @@ class SimulationCamera:
             return self._sim is not None and self._sim.getSimulationState() is not None
         except Exception:
             return False
+
+    @property
+    def sensor_path(self) -> str:
+        """Return sensorpath for RobotArm so no new configuration loaded."""
+        return self._sensor_path
+
+    @property 
+    def resolution(self) -> tuple[int, int]:
+        """Return sensor resolution."""
+        return self._res_x, self._res_y
 
     def read(self) -> Frame:
         """
@@ -97,6 +106,7 @@ class SimulationCamera:
 
         return bgr_frame
 
+
     def read_depth(self) -> np.ndarray:
         """
         Return the raw metric depth map (distance in meters) for LiDAR/depth operations.
@@ -126,15 +136,3 @@ class SimulationCamera:
     def close(self) -> None:
         """Close external OpenCV preview windows and detach."""
         cv.destroyAllWindows()
-
-    def is_sim_running(self) -> bool:
-        """Returns True if the simulation is actively running and advancing."""
-        try:
-            state = self._sim.getSimulationState()
-            # 0: stopped, 1: paused, >=2: advancing/running
-            stopped = getattr(self._sim, "simulation_stopped", 0)
-            paused = getattr(self._sim, "simulation_paused", 1)
-
-            return state not in (stopped, paused)
-        except Exception:
-            return False

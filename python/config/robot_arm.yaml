@@ -1,5 +1,6 @@
 arm:
-  target_path: "/Robot_arm"
+  model_path: "/UR5"
+  target_path: "/UR5/target"
 
   serial_port: null
   baudrate: 115200
@@ -7,3 +8,4 @@ arm:
   approach_height_offset: 0.20
   max_velocity: 0.5
   step_size: 0.005
+  steps_count: 100
