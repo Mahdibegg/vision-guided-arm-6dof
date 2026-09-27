@@ -36,7 +36,6 @@ class InputSanitizer():
 
     @staticmethod
     def _is_valid_detection_description(description: str) -> bool:
-        """Perform basic validation on a detection description."""
 
         if not description:
             return False
@@ -69,7 +68,6 @@ class InputSanitizer():
 
     @staticmethod
     def _is_valid_command(description: str) -> Command | None:
-        """Perform basic validation on a command input."""
 
         if not description:
             return None

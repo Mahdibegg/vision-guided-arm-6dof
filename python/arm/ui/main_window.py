@@ -414,6 +414,7 @@ class MainWindow(QMainWindow):
     # Camera end button functionality
     @Slot()
     def _on_camera_stopped(self) -> None:
+
         self._log_widget.addLine(LogLevel.INFO, "camera stopped", Colour.YELLOW)
         self._camera_worker.clear_detections()
         self._camera_widget.clear_frame()
@@ -446,6 +447,7 @@ class MainWindow(QMainWindow):
     # Robot arm worker functionality
 
     def _create_robot_arm_worker(self) -> None:
+        
         self._robot_arm_thread = QThread(self)
 
         arm_connection = self._connect_or_log_error(f"{ARM_CONFIG.model_path}, {ARM_CONFIG.target_path}")

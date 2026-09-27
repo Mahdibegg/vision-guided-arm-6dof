@@ -31,13 +31,14 @@ class RobotArm:
 
         # Other robot arm configuration values
         self._steps_count = config.steps_count
+        self._step_size = config.step_size
         self._approach_height_offset = config.approach_height_offset
 
         self._default_position: Point = (
-                -0.18495,
-                -0.010,
-                0.86255,
-            )
+            -0.18495,
+            -0.010,
+            0.86255,
+        )
 
         self._width, self._height = simulation_camera.resolution
 
@@ -84,7 +85,6 @@ class RobotArm:
         )
         return np.flipud(depth_map)
 
-    # Applying the matrix transformation to a 2d point
     def pixel_to_robot(self, u: float, v: float) -> Point:
         # Linear transformation shorthand
         m = self._camera_to_robot
@@ -104,7 +104,6 @@ class RobotArm:
 
         return [x_robot, y_robot, z_robot]
 
-    # Moving the target smoothly to a destination
     def move_target_smoothly(self, destination: Point) -> None:
         start = self._sim.getObjectPosition(self._target, self._robot_base)
 
@@ -121,7 +120,6 @@ class RobotArm:
 
             time.sleep(0.01)
 
-    # Going into the "pick" position
     def move_above(self, robot_point: Point) -> Point:
         approach = [
             robot_point[0],
@@ -132,25 +130,29 @@ class RobotArm:
         self.move_target_smoothly(approach)
 
         return approach
+    
+    def pick_and_place(self, robot_point: Point) -> None:
+        """Combine private functions to carry out a full pick and place based on a robot point"""
+        object_handle = self._pick_object(robot_point)
+        self._drop_object(object_handle)
+        self.return_to_default_position()
+
+    def return_to_default_position(self) -> None:
+        """Return the arm to a default position that is hard coded."""
+        self.move_target_smoothly(self._default_position)
 
     # Lower the TCP until the proximity sensor detects an object
     def _lower_until_detected(
         self,
-        step_size: float = 0.002,
         max_descent: float = 0.30,
     ) -> int:
 
-        start = self._sim.getObjectPosition(
-            self._target,
-            self._robot_base
-        )
+        start = self._sim.getObjectPosition(self._target, self._robot_base)
 
         minimum_z = start[2] - max_descent
 
         while True:
-            result, distance, point, detected_object, normal = (
-                self._sim.readProximitySensor(self._pickup_sensor)
-            )
+            result, distance, point, detected_object, normal = (self._sim.readProximitySensor(self._pickup_sensor))
 
             # Stop lowering once an object is detected
             if result == 1:
@@ -161,10 +163,7 @@ class RobotArm:
 
                 return detected_object
 
-            current = self._sim.getObjectPosition(
-                self._target,
-                self._robot_base
-            )
+            current = self._sim.getObjectPosition(self._target, self._robot_base)
 
             # Safety check so the robot cannot keep lowering forever
             if current[2] <= minimum_z:
@@ -173,7 +172,7 @@ class RobotArm:
                 )
 
             # Lower the target by 2 mm
-            current[2] -= step_size
+            current[2] -= self._step_size
 
             self._sim.setObjectPosition(
                 self._target,
@@ -183,8 +182,6 @@ class RobotArm:
 
             time.sleep(0.02)
 
-
-    # Simulate suction by attaching the object to the TCP
     def _attach_object(self, object_handle: int) -> None:
 
         self._sim.setObjectParent(
@@ -193,8 +190,6 @@ class RobotArm:
             True
         )
 
-
-    # Release the object from the TCP
     def _release_object(self, object_handle: int) -> None:
 
         self._sim.setObjectParent(
@@ -203,8 +198,6 @@ class RobotArm:
             True
         )
 
-
-    # Lift vertically from the current position
     def _lift(self, height: float | None = None) -> Point:
 
         if height is None:
@@ -225,26 +218,15 @@ class RobotArm:
 
         return destination
 
-
-    # Approach the object, detect it, attach it and lift it
     def _pick_object(self, robot_point: Point) -> int:
 
-        # Move to a safe position above the object
         self.move_above(robot_point)
-
-        # Lower until the proximity sensor detects the object
         detected_object = self._lower_until_detected()
-
-        # Simulate turning the suction on
         self._attach_object(detected_object)
-
-        # Lift the object away from the table
         self._lift()
 
         return detected_object
-
-
-    # Move to the configured drop target
+    
     def _move_to_drop_target(self) -> Point:
 
         drop_position = self._sim.getObjectPosition(
@@ -262,35 +244,8 @@ class RobotArm:
 
         return destination
 
-
-    # Move to the drop target, release the object and lift away
     def _drop_object(self, object_handle: int) -> None:
 
         self._move_to_drop_target()
-
-        # Simulate turning suction off
         self._release_object(object_handle)
-
-        # Move away from the released object
         self._lift()
-
-
-    # Return the robot to its default/home position
-    def _return_to_default_position(self) -> Point:
-
-        self.move_target_smoothly(self._default_position)
-
-        return self._default_position
-
-
-    # Complete pick-and-place sequence
-    def pick_and_place(self, robot_point: Point) -> None:
-
-        # Pick up the detected object
-        object_handle = self._pick_object(robot_point)
-
-        # Move it to the drop location and release it
-        self._drop_object(object_handle)
-
-        # Return the robot to its home position
-        self._return_to_default_position()
