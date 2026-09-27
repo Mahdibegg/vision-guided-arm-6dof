@@ -58,9 +58,7 @@ else
 fi
 
 echo
-echo "Setup complete."
-echo "You can now run:"
-echo "  ./scripts/simulator.sh"
+echo "Dependencies installation complete."
 
 echo "Syncing python packages for python camera applications..."
 
@@ -117,3 +115,40 @@ else
         exit 1
     fi
 fi
+
+COPPELIASIM_DIR="$PROJECT_ROOT/simulation"
+COPPELIASIM_VERSION="V4_8_0_rev0"
+COPPELIASIM_TAR="CoppeliaSim_Edu_${COPPELIASIM_VERSION}_Ubuntu22_04.tar.xz"
+COPPELIASIM_URL="https://downloads.coppeliarobotics.com/${COPPELIASIM_VERSION}/${COPPELIASIM_TAR}"
+COPPELIASIM_EXTRACTED_DIR="CoppeliaSim_Edu_${COPPELIASIM_VERSION}_Ubuntu22_04"
+
+mkdir -p "$COPPELIASIM_DIR"
+cd "$COPPELIASIM_DIR"
+
+if [ -d "$COPPELIASIM_EXTRACTED_DIR" ]; then
+    echo "CoppeliaSim is already downloaded and extracted."
+else
+    echo "Downloading CoppeliaSim (this may take a while)..."
+    
+    if wget --show-progress -O "$COPPELIASIM_TAR" "$COPPELIASIM_URL"; then
+        echo "Extracting CoppeliaSim..."
+        tar -xf "$COPPELIASIM_TAR"
+        rm "$COPPELIASIM_TAR"
+        echo "CoppeliaSim installed successfully to $COPPELIASIM_DIR/$COPPELIASIM_EXTRACTED_DIR."
+        
+        # Link libsodium for Fedora users to ensure ZeroMQ plugin loads correctly
+        if command -v dnf >/dev/null 2>&1; then
+            echo "Applying Fedora-specific libsodium link..."
+            if [ -f /usr/lib64/libsodium.so.26 ]; then
+                ln -sf /usr/lib64/libsodium.so.26 "$COPPELIASIM_DIR/$COPPELIASIM_EXTRACTED_DIR/libsodium.so.23"
+            fi
+        fi
+    else
+        echo "Failed to download CoppeliaSim." >&2
+        rm -f "$COPPELIASIM_TAR"
+        exit 1
+    fi
+fi
+
+echo
+echo "Setup complete."
