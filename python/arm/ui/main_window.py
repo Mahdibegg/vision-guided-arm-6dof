@@ -363,22 +363,27 @@ class MainWindow(QMainWindow):
         )
 
         self._grounding_dino_worker.moveToThread(self._grounding_dino_thread)
-
         self._grounding_dino_thread.finished.connect(self._grounding_dino_worker.deleteLater)
 
         # Load the model after the worker enters its own thread.
         self._grounding_dino_thread.started.connect(self._grounding_dino_worker.initialize)
-
         self._camera_worker.grounding_dino_requested.connect(self._grounding_dino_worker.detect)
-
         self._grounding_dino_worker.ready.connect(self._camera_worker.set_grounding_dino_ready)
-
         self._grounding_dino_worker.detection_complete.connect(self._camera_worker.accept_grounding_dino_result)
-
         self._grounding_dino_worker.error.connect(self._camera_worker.accept_grounding_dino_error)
+        self._grounding_dino_worker.error.connect(self._on_grounding_dino_worker_error)
 
         self._camera_thread.start()
         self._grounding_dino_thread.start()
+
+    @Slot(str)
+    def _on_grounding_dino_worker_error(self, message: str) -> None:
+        # Safely update the UI from the main thread
+        self._log_widget.addLine(
+            LogLevel.ERROR, 
+            f"Grounding Dino Worker error: {message}", 
+            Colour.RED
+        )
 
     # Camera start button functionality
     @Slot()
@@ -436,26 +441,7 @@ class MainWindow(QMainWindow):
 
         self._log_widget.addLine(LogLevel.ERROR, f"Camera error: {message}", Colour.RED)
         
-        self._camera_worker.clear_detections()
-        self._camera_widget.clear_frame()
-        self._start_button.setEnabled(True)
-        self._stop_button.setEnabled(False)
-        self._detection_button.setChecked(False)
-        self._detection_button.setEnabled(False)
-        self._strict_detection_button.setChecked(False)
-        self._strict_detection_button.setEnabled(False)
-        self._link_arm_button.setEnabled(False)
-
-        self._camera_running = False
-
-        self._command_input.clear()
-
-        # No vision should result in break arm link
-        if self._arm_linked:
-            self.break_arm_link_requested.emit()
-
-        # When camera stops reset all these attributes
-        self._reset_attr()
+        self._on_camera_stopped()
 
     # Robot arm worker functionality
 
@@ -605,7 +591,7 @@ class MainWindow(QMainWindow):
                 f"found with {target.confidence:.0%} confidence",
                 Colour.GREEN
             )
-            
+
             if self._arm_linked:
                 self.pick_target_requested.emit(target)
 

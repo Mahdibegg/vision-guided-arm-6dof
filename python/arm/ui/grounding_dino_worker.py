@@ -60,6 +60,7 @@ class GroundingDinoWorker(QObject):
             return
 
         try:
+            
             detections = self._detector.detect(
                 frame = frame,
                 description = description,
