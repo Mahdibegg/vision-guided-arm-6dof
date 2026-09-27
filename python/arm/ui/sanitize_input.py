@@ -1,6 +1,7 @@
 import re
 
 from dataclasses import dataclass
+from enum import Enum
 
 # PREFIXES that should be cleaned up before passing into model
 PREFIXES = (
@@ -10,12 +11,18 @@ PREFIXES = (
     "detect ",
 )
 
+class Command(Enum):
+    DEFAULT = "default"
+
+commands = [cmd.value for cmd in Command]
+
 @dataclass
 class SanitizedInput:
     input: str | None
     is_valid: bool
+    command : Command | None = None
 
-class SanitizeInput():
+class InputSanitizer():
     """
     SanitizeInput returns SanitizedInput object with a boolean indicating whether the input
     is valid and a string indicating the sanitized input, after performing basic validation.
@@ -60,6 +67,19 @@ class SanitizeInput():
 
         return normalised_command
 
+    @staticmethod
+    def _is_valid_command(description: str) -> Command | None:
+        """Perform basic validation on a command input."""
+
+        if not description:
+            return None
+
+        for cmd in commands:
+            if description.lower() == cmd:
+                return cmd
+
+        return None
+
     def process_input(self) -> SanitizedInput:
         """Process the user input and return a detection description."""
         # Sanitizing input by stripping white spaces, extracting description and checking valid description
@@ -67,6 +87,15 @@ class SanitizeInput():
             return SanitizedInput(
                 input = None,
                 is_valid = False
+            )
+
+        command_if_found = self._is_valid_command(self._input)
+
+        if command_if_found:
+            return SanitizedInput(
+                input=self._input,
+                is_valid=True,
+                command=command_if_found,
             )
 
         input_text = self._input.strip()

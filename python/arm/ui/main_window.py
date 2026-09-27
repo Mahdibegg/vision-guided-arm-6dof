@@ -32,7 +32,7 @@ from arm.ui.camera_widget import CameraWidget
 from arm.ui.camera_worker import CameraWorker
 from arm.ui.robot_arm_worker import RobotArmWorker
 from arm.ui.log_widget import LogWidget, LogLevel, Colour
-from arm.ui.sanitize_input import SanitizeInput
+from arm.ui.sanitize_input import InputSanitizer
 
 from arm.config_loader import (
     load_camera_config,
@@ -515,9 +515,9 @@ class MainWindow(QMainWindow):
     # Command input functionality
 
     def _update_submit_button(self) -> None:
-        has_command = bool(self._command_input.text().strip())
+        has_input = bool(self._command_input.text().strip())
 
-        self._submit_button.setEnabled(self._camera_running and has_command)
+        self._submit_button.setEnabled(self._camera_running and has_input)
 
     @Slot()
     def _on_submit_button_clicked(self) -> None:
@@ -526,7 +526,7 @@ class MainWindow(QMainWindow):
         if not input_text:
             return
         
-        sanitized_text = SanitizeInput(input_text).process_input()
+        sanitized_text = InputSanitizer(input_text).process_input()
         
         if not sanitized_text.is_valid or sanitized_text.input is None:
             self._log_widget.addLine(
@@ -535,6 +535,17 @@ class MainWindow(QMainWindow):
                 Colour.RED,
             )
             self._command_input.clear()
+            return
+        elif sanitized_text.command == "default":
+            self._log_widget.addLine(
+                LogLevel.CMD,
+                "moving object to default position...",
+                Colour.BLUE,
+            )
+            self._command_input.clear()
+
+            # Implement function
+            
             return
         
         input_text = sanitized_text.input
