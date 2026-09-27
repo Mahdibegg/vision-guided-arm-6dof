@@ -68,6 +68,11 @@ class CameraWorker(QObject):
 
         self._vision_model: Detector | None = None
 
+    @property
+    def camera(self) -> SimulationCamera | None:
+        """Expose the active camera instance for spatial calibration."""
+        return self._camera
+
     @Slot()
     def start(self) -> None:
         """Open the camera and begin reading frames."""
@@ -199,11 +204,6 @@ class CameraWorker(QObject):
         self._target_object = target
 
         self.target_detected.emit(target)
-
-    @property
-    def camera(self) -> SimulationCamera | None:
-        """Expose the active camera instance for spatial calibration."""
-        return self._camera
 
     @Slot()
     def _read_frame(self) -> None:

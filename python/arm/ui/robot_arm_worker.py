@@ -37,6 +37,11 @@ class RobotArmWorker(QObject):
 
         self._robot_arm: RobotArm | None = None
 
+    @property
+    def arm(self) -> RobotArm | None:
+        """Return the current RobotArm instance."""
+        return self._robot_arm
+
     @Slot()
     def link(self) -> None:
         """Create a RobotArm instance and connect it to the running simulation."""

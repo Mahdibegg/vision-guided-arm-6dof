@@ -17,7 +17,10 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
 )
 
-from arm.simulation.connection import connect_to_simulation
+from arm.simulation.connection import (
+    SimulationConnection,
+    connect_to_simulation
+)
 
 from arm.model.robot_arm import RobotArm
 
@@ -77,10 +80,6 @@ class MainWindow(QMainWindow):
         self._create_robot_arm_worker()
         self._create_camera_worker()
         self._connect_signals()
-
-        # Validate the connection to the simulation at the beginning of the application
-        self._client, self._sim = connect_to_simulation()
-        self._log_simulation_connection()
 
     @Slot(str)
     def request_grounding_dino_detection(self, description: str) -> None:
@@ -143,42 +142,32 @@ class MainWindow(QMainWindow):
         self._strict_detection = False
         self._arm_linked = False
 
-    def _is_simulation_running(self) -> bool:
-            """Checks the simulation state directly using MainWindow's shared connection."""
-            # 1. Guard against uninitialized or dropped connection
-            if not getattr(self, "_sim", None):
-                return False
-                
-            try:
-                state = self._sim.getSimulationState()
-                
-                # 0: stopped, 1: paused, >=2: advancing/running
-                stopped = getattr(self._sim, "simulation_stopped", 0)
-                paused = getattr(self._sim, "simulation_paused", 1)
+    # Connection helper functions
 
-                return state not in (stopped, paused)
-                
-            except Exception as e:
-                # Print the error to terminal so it doesn't fail silently
-                print(f"Simulation state check failed: {e}")
-                return False
-
-    def _log_simulation_connection(self) -> bool:
-        """Check for connection on CoppeliaSim (is it open)."""
-        if self._client and self._sim:
+    def _connect_or_log_error(self, object_connected: str) -> SimulationConnection | None:
+        """Open a simulation connection on the GUI thread, logging success or failure."""
+        try:
+            connection = connect_to_simulation()
+            self._log_simulation_connection(object_connected, True)
+            return connection
+        except ConnectionError as e:
+            self._log_simulation_connection(object_connected, False)
+            return None
+        
+    def _log_simulation_connection(self, object_connected: str, success: bool) -> None:
+        if success:
+            """Log a successful connection to CoppeliaSim."""
             self._log_widget.addLine(
                 LogLevel.INFO,
                 "successfully connected to CoppeliaSim\n                  "
-                f"at @ {SIMULATION_CONFIG.host}:{SIMULATION_CONFIG.port} on '{SIMULATION_CAMERA_CONFIG.sensor_path}'"
+                f"@ {SIMULATION_CONFIG.host}:{SIMULATION_CONFIG.port} on '{object_connected}'"
             )
-            return True
         else:
             self._log_widget.addLine(
                 LogLevel.ERROR,
-                "failed to connect to CoppeliaSim\n                  "
-                f"at @ {SIMULATION_CONFIG.host}:{SIMULATION_CONFIG.port} on '{SIMULATION_CAMERA_CONFIG.sensor_path}'"
+                f"failed to connect to {SIMULATION_CONFIG.host}:{SIMULATION_CONFIG.port} on '{object_connected}'",
+                Colour.RED
             )
-            return False
 
     # Keep the init function small by having all the widgets in a private function
     def _create_widgets(self) -> None:
@@ -200,27 +189,28 @@ class MainWindow(QMainWindow):
         self._submit_button.setEnabled(False)
 
         self._detection_button = QPushButton("Full Detection")
-        self._detection_button.setObjectName("detectionButton")
+        self._detection_button.setObjectName("checkableButton")
         self._detection_button.setCheckable(True)
         self._detection_button.setChecked(False)
         self._detection_button.setEnabled(False)
 
         self._strict_detection_button = QPushButton("Strict Detection")
-        self._strict_detection_button.setObjectName("detectionButton")
+        self._strict_detection_button.setObjectName("checkableButton")
         self._strict_detection_button.setCheckable(True)
         self._strict_detection_button.setChecked(False)
         self._strict_detection_button.setEnabled(False)
 
         self._clear_log_button = QPushButton("Clear Log")
+
         self._link_arm_button = QPushButton("Link Arm")
+        self._link_arm_button.setObjectName("checkableButton")
         self._link_arm_button.setCheckable(True)
         self._link_arm_button.setChecked(False)
         self._link_arm_button.setEnabled(False)
 
         self._start_button = QPushButton("Start Camera")
         self._stop_button = QPushButton("Stop Camera")
-        # Set stop button initially to false, so that it is disabled by default
-        self._stop_button.setEnabled(False)
+        self._stop_button.setEnabled(False) # Disable stop button by default
 
     def _create_layout(self) -> None:
         main_layout = QGridLayout()
@@ -336,13 +326,18 @@ class MainWindow(QMainWindow):
     def _create_camera_worker(self) -> None:
         self._camera_thread = QThread(self)
 
+        camera_connection = self._connect_or_log_error(SIMULATION_CAMERA_CONFIG.sensor_path)
+
+        # Log messages already handled, don't continue if no camera connection
+        if not camera_connection:
+            return
+
         # Receive a configured camera class
         # And receive all model configs from main window (so one single import from main_window)
         self._camera_worker = CameraWorker(
             lambda: SimulationCamera(
-                self._client,
-                self._sim,
-                config = SIMULATION_CAMERA_CONFIG,
+                connection=camera_connection,
+                config=SIMULATION_CAMERA_CONFIG,
             ),
             SIMULATION_CAMERA_CONFIG.fps,
             GROUNDING_DINO_CONFIG,
@@ -386,15 +381,7 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_camera_started(self) -> None:
 
-        # Log the connection to CoppeliaSim on the widget
-        if not self._client or not self._sim:
-            # If no client or sim object, connect to CoppeliaSim and report status
-            self._client, self._sim = connect_to_simulation()
-            new_status = self._log_simulation_connection()
-            if not new_status:
-                return
-
-        if not self._is_simulation_running():
+        if not self._camera_worker.camera.is_simulation_running():
             self._log_widget.addLine(
                 LogLevel.WARNING,
                 "start CoppeliaSim simulation to render frames",
@@ -424,10 +411,9 @@ class MainWindow(QMainWindow):
         self._stop_button.setEnabled(False)
         self._detection_button.setChecked(False)
         self._detection_button.setEnabled(False)
-        self._link_arm_button.setEnabled(False)
-
         self._strict_detection_button.setChecked(False)
         self._strict_detection_button.setEnabled(False)
+        self._link_arm_button.setEnabled(False)
 
         self._command_input.clear()
 
@@ -439,14 +425,9 @@ class MainWindow(QMainWindow):
         self._reset_attr()
 
     @Slot(str)
-    def _on_camera_error(self) -> None:
-        config = SIMULATION_CAMERA_CONFIG
+    def _on_camera_error(self, message: str) -> None:
 
-        self._log_widget.addLine(
-            LogLevel.ERROR,
-            f"failed to connect to {config.host}:{config.port} on '{config.sensor_path}'",
-            Colour.RED
-        )
+        self._log_widget.addLine(LogLevel.ERROR, f"Camera error: {message}", Colour.RED)
         
         self._camera_worker.clear_detections()
         self._camera_widget.clear_frame()
@@ -470,12 +451,13 @@ class MainWindow(QMainWindow):
     def _create_robot_arm_worker(self) -> None:
         self._robot_arm_thread = QThread(self)
 
+        arm_connection = self._connect_or_log_error(f"{ARM_CONFIG.model_path}, {ARM_CONFIG.target_path}")
+
         # Don't construct the RobotArm eagerly - link() builds it on the
         # worker's own thread, once the camera (and its vision sensor) is active
         self._robot_arm_worker = RobotArmWorker(
             lambda: RobotArm(
-                sim_client=self._client,
-                sim=self._sim,
+                connection=arm_connection,
                 simulation_camera=self._camera_worker.camera,
                 config=ARM_CONFIG,
             )
@@ -494,10 +476,10 @@ class MainWindow(QMainWindow):
         active_camera = self._camera_worker.camera
 
         # No running simulation check since its assumed to be running
-        if active_camera is None:
+        if active_camera is None and not self._robot_arm_worker.arm.is_simulation_running:
             self._log_widget.addLine(
                 LogLevel.ERROR,
-                "Cannot link arm: Vision sensor is not running.",
+                "Cannot link arm: Vision sensor is not running",
                 Colour.RED
             )
             return
@@ -511,13 +493,13 @@ class MainWindow(QMainWindow):
     def _on_arm_linked(self) -> None:
         self._arm_linked = True
         self._link_arm_button.setChecked(True)
-        self._log_widget.addLine(LogLevel.INFO, "Robot arm linked successfully.", Colour.GREEN)
+        self._log_widget.addLine(LogLevel.INFO, "Robot arm linked successfully", Colour.GREEN)
 
     @Slot()
     def _on_arm_link_broken(self) -> None:
         self._arm_linked = False
         self._link_arm_button.setChecked(False)
-        self._log_widget.addLine(LogLevel.INFO, "Robot arm link broken.", Colour.YELLOW)
+        self._log_widget.addLine(LogLevel.INFO, "Robot arm link broken", Colour.YELLOW)
 
     @Slot(str)
     def _on_arm_error(self, message: str) -> None:

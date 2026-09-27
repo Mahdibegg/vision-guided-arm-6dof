@@ -1,10 +1,10 @@
 import math as math
 import time
-from typing import Any, Tuple, TypeAlias
+from typing import Any, TypeAlias
 
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient # type: ignore
 
-from arm.simulation.connection import connect_to_simulation
+from arm.simulation.connection import SimulationConnection
 from arm.vision.simulation_camera import SimulationCamera
 from arm.config_loader import ArmConfig
 
@@ -12,42 +12,49 @@ from arm.config_loader import ArmConfig
 Point: TypeAlias = tuple[float, float, float]
 
 class RobotArm:
-    def __init__(self, sim_client: RemoteAPIClient, sim: Any, simulation_camera: SimulationCamera, config: ArmConfig) -> None:
-        self._client, self._sim = sim_client, sim
+    def __init__(self, connection: SimulationConnection, simulation_camera: SimulationCamera, config: ArmConfig) -> None:
+        # Storing connection for any methods for SimulationConnection to be used (so far none)
+        self._connection = connection
+        self._client, self._sim = connection.client, connection.sim
         self._simulation_camera = simulation_camera
 
+        # Retrieve sensor handle from simulation camera
+        self._sensor_handle = simulation_camera.sensor_handle
+      
         # Get simulation objects using config values
-        self._sensor = self._sim.getObject(simulation_camera.sensor_path)
         self._robot_base = self._sim.getObject(config.model_path)
         self._target = self._sim.getObject(config.target_path)
 
-        # Other configuration values
+        # Other robot arm configuration values
         self._steps_count = config.steps_count
         self._approach_height_offset = config.approach_height_offset
 
         self._width, self._height = simulation_camera.resolution
 
-        view_angle = self._sim.getObjectFloatParam(
-            self.sensor,
+        self._horizontal_fov = self._sim.getObjectFloatParam(
+            self._sensor_handle,
             self._sim.visionfloatparam_perspective_angle
         )
-        self._horizontal_fov = view_angle
         self._vertical_fov = 2 * math.atan(
-            (self.height / self.width)
-            * math.tan(self.horizontal_fov / 2)
+            (self._height / self._width)
+            * math.tan(self._horizontal_fov / 2)
         )
 
-        self._cx = self.width / 2
-        self._cy = self.height / 2
+        self._cx = self._width / 2
+        self._cy = self._height / 2
 
-        self._fx = self.width / (2 * math.tan(self.horizontal_fov / 2))
-        self._fy = self.height / (2 * math.tan(self.vertical_fov / 2))
+        self._fx = self._width / (2 * math.tan(self._horizontal_fov / 2))     
+        self._fy = self._height / (2 * math.tan(self._vertical_fov / 2))
 
         # Linear transformation matrix for mapping camera to robot frame
         self._camera_to_robot = self._sim.getObjectMatrix(
-            self.sensor,
-            self.robot_base
+            self._sensor_handle,
+            self._robot_base
         )
+
+    def is_simulation_running(self) -> bool:
+        """Return whether CoppeliaSim client connection is active."""
+        return self._connection.is_simulation_running()
 
     # Applying the matrix transformation to a 2d point
     def pixel_to_robot(self, u: float, v: float) -> Point:

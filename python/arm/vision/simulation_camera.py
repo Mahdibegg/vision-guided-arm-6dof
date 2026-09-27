@@ -5,6 +5,7 @@ from typing import Any
 
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient # type: ignore
 from arm.config_loader import SimulationCameraConfig
+from arm.simulation.connection import SimulationConnection
 from .camera_types import Frame
 
 class SimulationCamera:
@@ -16,14 +17,18 @@ class SimulationCamera:
     Camera interface for modular use across vision and UI workers.
     """
 
-    def __init__(self, sim_client: RemoteAPIClient, sim: Any, config: SimulationCameraConfig) -> None:
+    def __init__(self, connection: SimulationConnection, config: SimulationCameraConfig) -> None:
+            # Store the connection class for using is_simulation_running on this class
+            self._connection = connection
+            self._client, self._sim = connection.client, connection.sim
+            
             self._config = config
-            self._sensor_path = config.sensor_path
             self._expected_width = config.width
             self._expected_height = config.height
             self._fps = config.fps
 
-            self._client, self._sim = sim_client, sim
+            # Attempt to retrieve the object
+            self._sensor_path = config.sensor_path
 
             try:
                 # Query object handle for the vision sensor
@@ -51,23 +56,18 @@ class SimulationCamera:
                 )
 
     @property
-    def is_open(self) -> bool:
-        """Return whether CoppeliaSim client connection is active."""
-        try:
-            # Check if API responds to basic ping/status query
-            return self._sim is not None and self._sim.getSimulationState() is not None
-        except Exception:
-            return False
-
-    @property
-    def sensor_path(self) -> str:
+    def sensor_handle(self) -> Any:
         """Return sensorpath for RobotArm so no new configuration loaded."""
-        return self._sensor_path
+        return self._sensor_handle
 
     @property 
     def resolution(self) -> tuple[int, int]:
         """Return sensor resolution."""
         return self._res_x, self._res_y
+
+    def is_simulation_running(self) -> bool:
+        """Return whether CoppeliaSim client connection is active."""
+        return self._connection.is_simulation_running()
 
     def read(self) -> Frame:
         """
