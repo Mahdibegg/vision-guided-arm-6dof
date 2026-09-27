@@ -30,6 +30,12 @@ class RobotArm:
         self._steps_count = config.steps_count
         self._approach_height_offset = config.approach_height_offset
 
+        self._default_position: Point = (
+                -0.18495,
+                -0.010,
+                0.86255,
+            )
+
         self._width, self._height = simulation_camera.resolution
 
         self._horizontal_fov = self._sim.getObjectFloatParam(
@@ -123,3 +129,14 @@ class RobotArm:
         self.move_target_smoothly(approach)
 
         return approach
+
+    def return_to_default_position(self) -> Point:
+        """Return the robot to its default home position."""
+        self.move_target_smoothly(self._default_position)
+        return self._default_position
+
+    def pick_and_place(self, robot_point: Point) -> None:
+        """Pick an object, drop it, then return home."""
+        object_handle = self.pick_object(robot_point)
+        self.drop_object(object_handle)
+        self.return_to_default_position()
