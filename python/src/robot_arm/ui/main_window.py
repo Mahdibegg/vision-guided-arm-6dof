@@ -29,7 +29,7 @@ from ui.workers.robot_arm_worker import RobotArmWorker
 from ui.workers.camera_worker import CameraWorker
 from ui.widgets.camera_widget import CameraWidget
 from ui.widgets.log_widget import LogWidget, LogLevel, Colour
-from .validation import SanitizedInput
+from .validation import InputSanitizer
 from config import (
     load_camera_config,
     load_app_config,
@@ -541,8 +541,6 @@ class MainWindow(QMainWindow):
                 Colour.BLUE,
             )
             self._command_input.clear()
-
-            # Implement function
             
             return
         
@@ -603,6 +601,7 @@ class MainWindow(QMainWindow):
 
             if self._arm_linked:
                 self.pick_target_requested.emit(target)
+                self._camera_worker.clear_detections()
 
         else:
             # Use the available target to report error then clear the target data so nothing is drawn
