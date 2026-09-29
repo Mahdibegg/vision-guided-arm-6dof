@@ -5,11 +5,21 @@ set -e
 # Resolve directories relative to the script's location in scripts/
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Check for the --clean flag before resolving the rest of the simulation paths
+if [[ "$1" == "--clean" ]]; then
+    echo -e "\e[33mCleaning up existing simulation directory...\e[0m"
+    rm -rf "$PROJECT_ROOT/simulation"
+    shift # Remove the flag from arguments
+fi
+
 CS_DIR="$PROJECT_ROOT/simulation/CoppeliaSim_Edu_V4_8_0_rev0_Ubuntu22_04"
 SCENES_DIR="$CS_DIR/scenes"
 SCENE_FILE="robot_pickup.ttt"
 
 echo "Verifying environment dependencies..."
+# Because setup.sh checks if the simulation directory exists, deleting it via --clean 
+# ensures this setup script will automatically trigger a fresh download and extraction[cite: 2]
 bash "$SCRIPT_DIR/setup.sh"
 
 echo "Checking for $SCENE_FILE..."
