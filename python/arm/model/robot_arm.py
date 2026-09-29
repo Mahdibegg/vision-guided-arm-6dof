@@ -364,7 +364,29 @@ class RobotArm:
 
         return approach
 
-    def pick_and_place(self, robot_point: Point) -> None:
+    def pixel_to_drop_point(self, u: float, v: float) -> Point:
+        """Convert a clicked pixel into a drop point, keeping the height of the drop target."""
+
+        clicked = self.pixel_to_robot(u, v)
+
+        drop_position = self._sim.getObjectPosition(
+            self._drop_target,
+            self._robot_base
+        )
+
+        # Depth can be invalid when the click lands on empty background
+        if not all(math.isfinite(c) for c in clicked):
+            raise RuntimeError("No valid depth at that pixel, click on the table.")
+
+        # X and Y come from the click, Z stays at the height already tuned for the drop target
+        drop_point = (clicked[0], clicked[1], drop_position[2])
+
+        # Refuse clicks the arm cannot reach
+        self._check_reachable(drop_point)
+
+        return drop_point
+
+    def pick_and_place(self, robot_point: Point, drop_point: Point | None = None) -> None:
         """Combine private functions to carry out a full pick and place based on a robot point"""
 
         # The tool orientation is only known once the arm has been home
@@ -372,7 +394,7 @@ class RobotArm:
             self.go_home()
 
         object_handle = self._pick_object(robot_point)
-        self._drop_object(object_handle)
+        self._drop_object(object_handle, drop_point)
         self.return_to_default_position()
 
         print("PICK AND PLACE COMPLETE")
@@ -524,12 +546,16 @@ class RobotArm:
 
         return detected_object
 
-    def _move_to_drop_target(self) -> Point:
+    def _move_to_drop_target(self, drop_point: Point | None = None) -> Point:
 
-        drop_position = self._sim.getObjectPosition(
-            self._drop_target,
-            self._robot_base
-        )
+        # Use the point given, otherwise fall back to the drop target in the scene
+        if drop_point is not None:
+            drop_position = drop_point
+        else:
+            drop_position = self._sim.getObjectPosition(
+                self._drop_target,
+                self._robot_base
+            )
 
         destination = (
             drop_position[0],
@@ -541,8 +567,8 @@ class RobotArm:
 
         return destination
 
-    def _drop_object(self, object_handle: int) -> None:
+    def _drop_object(self, object_handle: int, drop_point: Point | None = None) -> None:
 
-        self._move_to_drop_target()
+        self._move_to_drop_target(drop_point)
         self._release_object(object_handle)
         self._lift()
