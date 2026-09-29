@@ -592,7 +592,7 @@ class MainWindow(QMainWindow):
 
             if self._arm_linked:
                 self.pick_target_requested.emit(target)
-                self._camera_worker.clear_detections()
+                self.clear_grounding_dino()
 
         else:
             # Use the available target to report error then clear the target data so nothing is drawn

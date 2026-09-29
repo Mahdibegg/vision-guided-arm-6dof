@@ -145,7 +145,11 @@ class CameraWorker(QObject):
         self._detection_description = None
         self._target_object = None
         self._objects_detected.clear()
-        self.target_detected.emit(None)
+        try:
+            self.target_detected.emit(None)
+        except RuntimeError:
+            # QObject is already deleted during camera shutdown
+            pass
 
     @Slot()
     def set_grounding_dino_ready(self) -> None:
@@ -166,7 +170,7 @@ class CameraWorker(QObject):
             return
 
         # Clear detections since the model failed to process the request
-        self._grounded_detections = []
+        self._grounded_detections = self._grounded_detections
         self._target_object = None
 
         self.target_detected.emit(None)
