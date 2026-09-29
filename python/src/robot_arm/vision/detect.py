@@ -1,21 +1,21 @@
 from __future__ import annotations
 
-import groundingdino.datasets.transforms as T
-import torch
-import cv2
-
 from dataclasses import dataclass
-from .camera_types import Frame
-from ultralytics import YOLO
-
 from pathlib import Path
 
+import cv2
+import groundingdino.datasets.transforms as T
+import torch
 from groundingdino.util.inference import load_model, predict
 from PIL import Image
 from torch import Tensor
 from torchvision.ops import box_convert
+from ultralytics import YOLO
+
+from .cameras.types import Frame
 
 TARGET_CONFIDENCE_THRESHOLD = 0.60
+
 
 # Custom data type to represent Detection
 @dataclass(frozen=True, slots=True)
@@ -46,6 +46,7 @@ class Detection:
             (self.y1 + self.y2) // 2,
         )
 
+
 class Detector:
     """Detect objects in camera frames using natural-language descriptions."""
 
@@ -60,9 +61,7 @@ class Detector:
         text_threshold: float = 0.25,
         device: str | None = None,
     ) -> None:
-        self._device = device or (
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
+        self._device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         self._box_threshold = box_threshold
         self._text_threshold = text_threshold
@@ -123,19 +122,19 @@ class Detector:
         image = self._prepare_frame(frame)
 
         boxes, logits, phrases = predict(
-            model = self._model,
-            image = image,
-            caption = description,
-            box_threshold = self._box_threshold,
-            text_threshold = self._text_threshold,
-            device = self._device,
+            model=self._model,
+            image=image,
+            caption=description,
+            box_threshold=self._box_threshold,
+            text_threshold=self._text_threshold,
+            device=self._device,
         )
 
         return self._create_detections(
-            frame = frame,
-            boxes = boxes,
-            logits = logits,
-            phrases = phrases,
+            frame=frame,
+            boxes=boxes,
+            logits=logits,
+            phrases=phrases,
         )
 
     def _prepare_frame(self, frame: Frame) -> Tensor:
@@ -159,14 +158,14 @@ class Detector:
         frame_height, frame_width = frame.shape[:2]
 
         boxes = box_convert(
-            boxes = boxes,
-            in_fmt = "cxcywh",
-            out_fmt = "xyxy",
+            boxes=boxes,
+            in_fmt="cxcywh",
+            out_fmt="xyxy",
         )
 
         scale = torch.tensor(
             [frame_width, frame_height, frame_width, frame_height],
-            device = boxes.device,
+            device=boxes.device,
         )
 
         pixel_boxes = (boxes * scale).round().to(torch.int32).cpu()
@@ -178,7 +177,7 @@ class Detector:
             pixel_boxes,
             confidences,
             phrases,
-            strict = True,
+            strict=True,
         ):
             x1, y1, x2, y2 = box.tolist()
 
@@ -193,18 +192,19 @@ class Detector:
 
             detections.append(
                 Detection(
-                    class_name = phrase,
-                    description = phrase,
-                    confidence = float(confidence.item()),
-                    x1 = x1,
-                    y1 = y1,
-                    x2 = x2,
-                    y2 = y2,
+                    class_name=phrase,
+                    description=phrase,
+                    confidence=float(confidence.item()),
+                    x1=x1,
+                    y1=y1,
+                    x2=x2,
+                    y2=y2,
                 )
             )
 
         return detections
-    
+
+
 def is_valid_detection(
     detection: Detection | None,
 ) -> bool:
@@ -216,10 +216,13 @@ def is_valid_detection(
         and detection.width > 0
         and detection.height > 0
     )
-    
-def highlight_objects(frame: Frame, objects: list[Detection], target_object: Detection | None = None) -> Frame:
+
+
+def highlight_objects(
+    frame: Frame, objects: list[Detection], target_object: Detection | None = None
+) -> Frame:
     """Highlight the all objects detected on the camera window"""
-    
+
     colour: tuple[int, int, int]
 
     highlighted_frame = frame.copy()
@@ -232,11 +235,21 @@ def highlight_objects(frame: Frame, objects: list[Detection], target_object: Det
         # Highlight target object with blue
         if target_object == obj:
             colour = (255, 0, 0)
-        else: 
+        else:
             # Change the colour based on the confidence
             colour = (0, round(confidence * 255), round(255 - confidence * 255))
 
-        highlighted_frame = cv2.rectangle(highlighted_frame, (obj.x1, obj.y1), (obj.x2, obj.y2), colour, 3)
-        highlighted_frame = cv2.putText(highlighted_frame, obj.class_name, (obj.x1 + 5, obj.y1 + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        highlighted_frame = cv2.rectangle(
+            highlighted_frame, (obj.x1, obj.y1), (obj.x2, obj.y2), colour, 3
+        )
+        highlighted_frame = cv2.putText(
+            highlighted_frame,
+            obj.class_name,
+            (obj.x1 + 5, obj.y1 + 15),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 255),
+            2,
+        )
 
     return highlighted_frame

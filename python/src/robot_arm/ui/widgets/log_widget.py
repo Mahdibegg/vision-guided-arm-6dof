@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from PySide6.QtCore import Slot
-from PySide6.QtGui import QTextCharFormat, QColor,  QTextCursor
-from PySide6.QtWidgets import QPlainTextEdit
 from enum import Enum
 
+from PySide6.QtCore import Slot
+from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor
+from PySide6.QtWidgets import QPlainTextEdit
+
 BASE_MAX_LINE = 128
+
 
 class LogLevel(Enum):
     INFO = "INFO"
@@ -15,12 +17,14 @@ class LogLevel(Enum):
     DEBUG = "DEBUG"
     CMD = "CMD"
 
+
 class Colour(Enum):
     WHITE = 0
     RED = 1
     YELLOW = 2
     GREEN = 3
     BLUE = 4
+
 
 class LogWidget(QPlainTextEdit):
     """
@@ -34,16 +38,16 @@ class LogWidget(QPlainTextEdit):
         # Otherwise application may lag
         self._max_lines = max_lines
         self.document().setMaximumBlockCount(self._max_lines)
-        
+
         self.setMaximumHeight(1050)
         self.setMinimumHeight(1050)
-        
+
         self.setStyleSheet(style_settings)
-        
+
         self.setPlainText("")
         self.setReadOnly(True)
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-    
+
         self._colour_map = {
             Colour.WHITE: QColor("#E8ECF2"),
             Colour.RED: QColor("#F47067"),
@@ -54,9 +58,11 @@ class LogWidget(QPlainTextEdit):
 
     # Add a new line of text to the log widget externally by changing the colour
     @Slot(str)
-    def addLine(self, log_level: LogLevel, message: str, colour: Colour = Colour.WHITE) -> None:
+    def addLine(
+        self, log_level: LogLevel, message: str, colour: Colour = Colour.WHITE
+    ) -> None:
         """Add a new line with timestamp and message with max line number limits"""
-        
+
         # Get current time for timestamp with log entry formatting
         timestamp = datetime.now().strftime("%H:%M:%S")
         log_entry = f"[{timestamp}] {log_level.value} - {message}"

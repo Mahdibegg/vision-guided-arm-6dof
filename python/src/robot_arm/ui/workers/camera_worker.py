@@ -1,24 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from PySide6.QtCore import QObject, QTimer, Signal, Slot
-from cv2 import cvtColor, COLOR_BGR2RGB
 from pathlib import Path
-from cv2 import cvtColor, COLOR_BGR2RGB
 
-from arm.vision.camera import Camera
-from arm.vision.camera_types import Frame
-from arm.vision.detect import (
-    Detection,
-    Detector,
-    highlight_objects,
-    is_valid_detection
-)
+from cv2 import COLOR_BGR2RGB, cvtColor
+from PySide6.QtCore import QObject, QTimer, Signal, Slot  # type: ignore
+from vision.cameras.simulation_camera import SimulationCamera
+from vision.cameras.types import Frame
+from vision.detect import Detection, Detector, highlight_objects
+
 
 class CameraWorker(QObject):
     """
     CameraWorker is responsible for managing the camera and capturing frames in a Qt compatible manner.
-    It emits signals for frame ready, started, stopped, and error, allowing the worker to run in a separate thread from the main application thread. 
+    It emits signals for frame ready, started, stopped, and error, allowing the worker to run in a separate thread from the main application thread.
     """
 
     frame_ready = Signal(object)
@@ -31,7 +26,7 @@ class CameraWorker(QObject):
     def __init__(
         self,
         # Create a new camera instance when called
-        camera_factory: Callable[[], Camera],
+        camera_factory: Callable[[], SimulationCamera],
         capture_fps: int,
         grounding_dino_config: str | Path,
         grounding_dino_weights: str | Path,
@@ -44,7 +39,7 @@ class CameraWorker(QObject):
         self._camera_factory = camera_factory
         self._interval_ms = max(1, round(1000 / capture_fps))
 
-        self._camera: Camera | None = None
+        self._camera: SimulationCamera | None = None
         self._timer: QTimer | None = None
 
         self._full_detection_enabled = False
@@ -68,6 +63,11 @@ class CameraWorker(QObject):
 
         self._vision_model: Detector | None = None
 
+    @property
+    def camera(self) -> SimulationCamera | None:
+        """Expose the active camera instance for spatial calibration."""
+        return self._camera
+
     @Slot()
     def start(self) -> None:
         """Open the camera and begin reading frames."""
@@ -80,11 +80,11 @@ class CameraWorker(QObject):
             # The grounding dino and yolo model
             if self._vision_model is None:
                 self._vision_model = Detector(
-                    config_path = self._grounding_dino_config,
-                    weights_path = self._grounding_dino_weights,
-                    yolo_model_name = self._yolo_model_name,
-                    box_threshold = 0.35,
-                    text_threshold = 0.25,
+                    config_path=self._grounding_dino_config,
+                    weights_path=self._grounding_dino_weights,
+                    yolo_model_name=self._yolo_model_name,
+                    box_threshold=0.35,
+                    text_threshold=0.25,
                 )
 
             self._camera = self._camera_factory()
@@ -129,7 +129,7 @@ class CameraWorker(QObject):
         # If the description remains the same, do nothing
         if new_description == self._detection_description:
             return
-    
+
         self._detection_description = new_description
         self._grounded_detections = []
         self._target_object = None
@@ -141,7 +141,62 @@ class CameraWorker(QObject):
         self._detection_description = None
         self._target_object = None
         self._objects_detected.clear()
+        try:
+            self.target_detected.emit(None)
+        except RuntimeError:
+            # QObject is already deleted during camera shutdown
+            pass
+
+    @Slot()
+    def set_grounding_dino_ready(self) -> None:
+        """Mark Grounding DINO as ready to receive requests."""
+
+        self._grounding_dino_ready = True
+
+    @Slot(str)
+    def accept_grounding_dino_error(
+        self,
+        description: str,
+    ) -> None:
+        """Handle a Grounding DINO failure by resetting the busy state."""
+        self._grounding_dino_busy = False
+
+        # Ignore a result belonging to an older command
+        if description != self._detection_description:
+            return
+
+        # Clear detections since the model failed to process the request
+        self._grounded_detections = self._grounded_detections
+        self._target_object = None
+
         self.target_detected.emit(None)
+
+    @Slot(object, str)
+    def accept_grounding_dino_result(
+        self,
+        detections: list[Detection],
+        description: str,
+    ) -> None:
+        """Cache the newest Grounding DINO result."""
+
+        self._grounding_dino_busy = False
+
+        # Ignore results from an older description.
+        if description != self._detection_description:
+            return
+
+        self._grounded_detections = detections
+
+        target = max(
+            detections,
+            key=lambda detection: detection.confidence,
+            default=None,
+        )
+
+        self._grounded_detections = detections
+        self._target_object = target
+
+        self.target_detected.emit(target)
 
     @Slot()
     def _read_frame(self) -> None:
@@ -176,75 +231,18 @@ class CameraWorker(QObject):
             self.stop()
             self.error.emit(str(error))
 
-    @Slot()
-    def set_grounding_dino_ready(self) -> None:
-        """Mark Grounding DINO as ready to receive requests."""
-
-        self._grounding_dino_ready = True
-
-    @Slot(str)
-    def accept_grounding_dino_error(
-        self,
-        detections: list[Detection],
-        description: str,
-    ) -> None:
-
-        self._grounding_dino_busy = False
-
-        # Ignore a result belonging to an older command
-        if description != self._detection_description:
-            return
-
-        target = max(
-            detections,
-            key = lambda detection: detection.confidence,
-            default = None,
-        )
-
-        self._grounded_detections = detections
-        self._target_object = target
-
-        self.target_detected.emit(target)
-
-    @Slot(object, str)
-    def accept_grounding_dino_result(
-        self,
-        detections: list[Detection],
-        description: str,
-    ) -> None:
-        """Cache the newest Grounding DINO result."""
-
-        self._grounding_dino_busy = False
-
-        # Ignore results from an older description.
-        if description != self._detection_description:
-            return
-
-        self._grounded_detections = detections
-
-        target = max(
-            detections,
-            key = lambda detection: detection.confidence,
-            default = None,
-        )
-
-        self._grounded_detections = detections
-        self._target_object = target
-
-        self.target_detected.emit(target)
-
     def _close_camera(self) -> None:
         """Close and discard the current camera instance."""
         if self._camera is None:
             return
-        
+
         self.target_detected.emit(None)
         self._camera.close()
         self._camera = None
 
     def _process_frame(self, frame: Frame) -> Frame:
         """Apply YOLO and/or Grounding DINO detection to a camera frame."""
-        
+
         has_description = self._detection_description is not None
 
         if not self._full_detection_enabled and not has_description:
@@ -255,28 +253,22 @@ class CameraWorker(QObject):
 
         yolo_detections: list[Detection] = []
 
-        if (
-            self._full_detection_enabled
-            and self._vision_model is not None
-        ):
+        if self._full_detection_enabled and self._vision_model is not None:
             yolo_detections = self._vision_model.analyse(frame)
 
             highlighted_frame = highlight_objects(
-                frame = highlighted_frame,
-                objects = yolo_detections,
+                frame=highlighted_frame,
+                objects=yolo_detections,
             )
 
         if has_description:
             highlighted_frame = highlight_objects(
-                frame = highlighted_frame,
-                objects = self._grounded_detections,
-                target_object = self._target_object,
+                frame=highlighted_frame,
+                objects=self._grounded_detections,
+                target_object=self._target_object,
             )
 
-        self._objects_detected = (
-            yolo_detections
-            + self._grounded_detections
-        )
+        self._objects_detected = yolo_detections + self._grounded_detections
 
         return cvtColor(
             highlighted_frame,

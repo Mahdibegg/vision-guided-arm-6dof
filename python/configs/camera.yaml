@@ -1,0 +1,12 @@
+camera:
+  device: 0
+  width: 1280
+  height: 720
+  fps: 30
+  format: "MJPG"
+
+simulation_camera:
+  sensor_path: "/Vision_sensor"
+  width: 1280
+  height: 720
+  fps: 30

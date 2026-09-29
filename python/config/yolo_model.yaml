@@ -1,3 +1,0 @@
-# YOLO model used for object detection
-model:
-  name: "yolov8n.pt"

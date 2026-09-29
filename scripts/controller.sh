@@ -7,5 +7,5 @@ repository_directory="$(
     pwd
 )"
 
-cd "$repository_directory/python"
-exec uv run python -m apps.arm_controller
+cd "$repository_directory/python/src/robot_arm/"
+exec uv run python -m apps.controller

@@ -84,3 +84,6 @@ __pycache__/
 
 # Model config data
 *pth
+
+# CoppeliaSim
+simulation/

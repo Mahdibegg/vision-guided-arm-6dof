@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot
+from vision.cameras.types import Frame
+from vision.detect import Detector
 
-from arm.vision.detect import Detector
-from arm.vision.camera_types import Frame
 
 class GroundingDinoWorker(QObject):
     ready = Signal()
@@ -33,11 +33,11 @@ class GroundingDinoWorker(QObject):
 
         try:
             self._detector = Detector(
-                config_path = self._config_path,
-                weights_path = self._weights_path,
-                yolo_model_name = self._yolo_model_name,
-                box_threshold = 0.35,
-                text_threshold = 0.25,
+                config_path=self._config_path,
+                weights_path=self._weights_path,
+                yolo_model_name=self._yolo_model_name,
+                box_threshold=0.35,
+                text_threshold=0.25,
             )
 
             self.ready.emit()
@@ -54,15 +54,13 @@ class GroundingDinoWorker(QObject):
         """Run one Grounding DINO inference."""
 
         if self._detector is None:
-            self.error.emit(
-                "Grounding DINO received a request before initialization."
-            )
+            self.error.emit("Grounding DINO received a request before initialization.")
             return
 
         try:
             detections = self._detector.detect(
-                frame = frame,
-                description = description,
+                frame=frame,
+                description=description,
             )
 
             # Return the description so stale results can be rejected

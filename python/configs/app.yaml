@@ -54,18 +54,18 @@ styles:
         border-color: #2C3139;
     }
 
-    QPushButton#detectionButton:checked {
+    QPushButton#checkableButton:checked {
         background-color: #4B91EE;
         color: #FFFFFF;
         border-color: #78AEF5;
     }
 
-    QPushButton#detectionButton:checked:hover {
+    QPushButton#checkableButton:checked:hover {
         background-color: #5A9EF4;
         border-color: #91BDF7;
     }
 
-    QPushButton#detectionButton:checked:pressed {
+    QPushButton#checkableButton:checked:pressed {
         background-color: #397DD8;
     }
 
