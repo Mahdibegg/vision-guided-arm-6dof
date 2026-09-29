@@ -3,7 +3,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QImage, QPixmap, QResizeEvent
 from PySide6.QtWidgets import QLabel
-from arm.vision.camera_types import Frame
+
+from vision.cameras.types import Frame
 
 class CameraWidget(QLabel):
     """

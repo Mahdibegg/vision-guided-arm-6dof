@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from PySide6.QtCore import QObject, Signal, Slot
 
-from arm.model.robot_arm import RobotArm, Point
-from arm.vision.detect import Detection
+from model.robot_arm import RobotArm, Point
+from vision.detect import Detection
 
 class RobotArmWorker(QObject):
     """

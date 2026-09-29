@@ -1,8 +1,7 @@
 import cv2 as cv
 import warnings
 
-from .camera_types import Frame
-from .detect import Detection
+from .types import Frame
 
 class Camera:
     """

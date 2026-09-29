@@ -1595,7 +1595,7 @@ wheels = [
 [[package]]
 name = "robot-arm-6dof"
 version = "2.0.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "coppeliasim-zmqremoteapi-client" },
     { name = "groundingdino" },

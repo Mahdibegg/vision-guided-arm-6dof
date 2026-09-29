@@ -3,11 +3,9 @@ import time
 import numpy as np
 from typing import Any, TypeAlias
 
-from coppeliasim_zmqremoteapi_client import RemoteAPIClient # type: ignore
-
-from arm.simulation.connection import SimulationConnection
-from arm.vision.simulation_camera import SimulationCamera
-from arm.config_loader import ArmConfig
+from simulation.connection import SimulationConnection
+from vision.cameras.simulation_camera import SimulationCamera
+from config import ArmConfig
 
 # Shorthand for typing a 3D point
 Point: TypeAlias = tuple[float, float, float]

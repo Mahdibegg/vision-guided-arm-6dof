@@ -1,20 +1,18 @@
 import yaml
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
 UTF8 = "utf-8"
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Use this common path to yaml configs directory
-CONFIG_DIRECTORY = PROJECT_ROOT / "config"
+CONFIG_DIRECTORY = PROJECT_ROOT / "configs"
 
 CAMERA_CONFIG_PATH = CONFIG_DIRECTORY / "camera.yaml"
-APP_CONFIG_PATH = CONFIG_DIRECTORY / "app_config.yaml"
-YOLO_CONFIG_PATH = CONFIG_DIRECTORY / "yolo_model.yaml"
+APP_CONFIG_PATH = CONFIG_DIRECTORY / "app.yaml"
+YOLO_CONFIG_PATH = CONFIG_DIRECTORY / "detection.yaml"
 ARM_CONFIG_PATH = CONFIG_DIRECTORY / "robot_arm.yaml"
 SIMULATION_CONFIG_PATH = CONFIG_DIRECTORY / "simulation.yaml"
 

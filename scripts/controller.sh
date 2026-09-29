@@ -7,5 +7,7 @@ repository_directory="$(
     pwd
 )"
 
-cd "$repository_directory/python"
-exec uv run python -m apps.arm_controller
+cd "$repository_directory/python/src/robot_arm/"
+exec uv run python -m apps.controller
+cd "$repository_directory"
+find . -type f -name '*.py[co]' -delete -o -type d -name __pycache__ -delete   

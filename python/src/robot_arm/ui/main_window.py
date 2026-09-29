@@ -17,24 +17,20 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
 )
 
-from arm.simulation.connection import (
+from simulation.connection import (
     SimulationConnection,
     connect_to_simulation
 )
-
-from arm.model.robot_arm import RobotArm
-
-from arm.vision.simulation_camera import SimulationCamera
-from arm.vision.detect import Detection, is_valid_detection
-
-from arm.ui.grounding_dino_worker import GroundingDinoWorker
-from arm.ui.camera_widget import CameraWidget
-from arm.ui.camera_worker import CameraWorker
-from arm.ui.robot_arm_worker import RobotArmWorker
-from arm.ui.log_widget import LogWidget, LogLevel, Colour
-from arm.ui.sanitize_input import SanitizeInput
-
-from arm.config_loader import (
+from model.robot_arm import RobotArm
+from vision.cameras.simulation_camera import SimulationCamera
+from vision.detect import Detection, is_valid_detection
+from ui.workers.grounding_dino_worker import GroundingDinoWorker
+from ui.workers.robot_arm_worker import RobotArmWorker
+from ui.workers.camera_worker import CameraWorker
+from ui.widgets.camera_widget import CameraWidget
+from ui.widgets.log_widget import LogWidget, LogLevel, Colour
+from ui.validation import SanitizeInput
+from config import (
     load_camera_config,
     load_app_config,
     load_grounding_dino_config,

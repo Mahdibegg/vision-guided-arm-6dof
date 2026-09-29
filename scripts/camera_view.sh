@@ -6,5 +6,7 @@ repository_directory="$(
     pwd
 )"
 
-cd "$repository_directory/python"
+cd "$repository_directory/python/src/robot_arm/"
 uv run python -m apps.camera_view
+cd "$repository_directory"
+find . -type f -name '*.py[co]' -delete -o -type d -name __pycache__ -delete  

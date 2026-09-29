@@ -1,5 +1,4 @@
 import re
-
 from dataclasses import dataclass
 
 # PREFIXES that should be cleaned up before passing into model

@@ -6,13 +6,12 @@ from cv2 import cvtColor, COLOR_BGR2RGB
 from pathlib import Path
 from cv2 import cvtColor, COLOR_BGR2RGB
 
-from arm.vision.simulation_camera import SimulationCamera
-from arm.vision.camera_types import Frame
-from arm.vision.detect import (
+from vision.cameras.simulation_camera import SimulationCamera
+from vision.cameras.types import Frame
+from vision.detect import (
     Detection,
     Detector,
-    highlight_objects,
-    is_valid_detection
+    highlight_objects
 )
 
 class CameraWorker(QObject):

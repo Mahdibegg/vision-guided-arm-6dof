@@ -3,10 +3,9 @@ import numpy as np
 import warnings
 from typing import Any
 
-from coppeliasim_zmqremoteapi_client import RemoteAPIClient # type: ignore
-from arm.config_loader import SimulationCameraConfig
-from arm.simulation.connection import SimulationConnection
-from .camera_types import Frame
+from config import SimulationCameraConfig
+from simulation.connection import SimulationConnection
+from .types import Frame
 
 class SimulationCamera:
     """

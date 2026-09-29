@@ -1,9 +1,8 @@
 import cv2 as cv
 
-from ultralytics import YOLO
-from arm.vision.camera import Camera
-from arm.vision.detect import Detector, highlight_objects
-from arm.config_loader import (
+from vision.cameras.camera import Camera
+from vision.detect import Detector, highlight_objects
+from config import (
     load_camera_config,
     load_grounding_dino_config,
     load_grounding_dino_weights,

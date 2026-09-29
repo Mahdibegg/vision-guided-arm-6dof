@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-
 from PySide6.QtCore import QObject, Signal, Slot
 
-from arm.vision.detect import Detector
-from arm.vision.camera_types import Frame
+from vision.detect import Detector
+from vision.cameras.types import Frame
 
 class GroundingDinoWorker(QObject):
     ready = Signal()

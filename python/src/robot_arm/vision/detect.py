@@ -3,17 +3,15 @@ from __future__ import annotations
 import groundingdino.datasets.transforms as T
 import torch
 import cv2
-
 from dataclasses import dataclass
-from .camera_types import Frame
-from ultralytics import YOLO
-
 from pathlib import Path
-
 from groundingdino.util.inference import load_model, predict
 from PIL import Image
 from torch import Tensor
 from torchvision.ops import box_convert
+from ultralytics import YOLO
+
+from .cameras.types import Frame
 
 TARGET_CONFIDENCE_THRESHOLD = 0.60
 

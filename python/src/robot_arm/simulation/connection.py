@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient
-from arm.config_loader import load_simulation_config
 
-# Load simulation connection details to establish a connection when needed
+from config import load_simulation_config
 
 SIMULATION_CONFIG = load_simulation_config()
 
