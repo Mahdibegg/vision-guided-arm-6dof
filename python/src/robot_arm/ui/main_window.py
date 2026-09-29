@@ -29,7 +29,7 @@ from ui.workers.robot_arm_worker import RobotArmWorker
 from ui.workers.camera_worker import CameraWorker
 from ui.widgets.camera_widget import CameraWidget
 from ui.widgets.log_widget import LogWidget, LogLevel, Colour
-from ui.validation import SanitizeInput
+from .validation import SanitizedInput
 from config import (
     load_camera_config,
     load_app_config,
@@ -359,22 +359,27 @@ class MainWindow(QMainWindow):
         )
 
         self._grounding_dino_worker.moveToThread(self._grounding_dino_thread)
-
         self._grounding_dino_thread.finished.connect(self._grounding_dino_worker.deleteLater)
 
         # Load the model after the worker enters its own thread.
         self._grounding_dino_thread.started.connect(self._grounding_dino_worker.initialize)
-
         self._camera_worker.grounding_dino_requested.connect(self._grounding_dino_worker.detect)
-
         self._grounding_dino_worker.ready.connect(self._camera_worker.set_grounding_dino_ready)
-
         self._grounding_dino_worker.detection_complete.connect(self._camera_worker.accept_grounding_dino_result)
-
         self._grounding_dino_worker.error.connect(self._camera_worker.accept_grounding_dino_error)
+        self._grounding_dino_worker.error.connect(self._on_grounding_dino_worker_error)
 
         self._camera_thread.start()
         self._grounding_dino_thread.start()
+
+    @Slot(str)
+    def _on_grounding_dino_worker_error(self, message: str) -> None:
+        # Safely update the UI from the main thread
+        self._log_widget.addLine(
+            LogLevel.ERROR, 
+            f"Grounding Dino Worker error: {message}", 
+            Colour.RED
+        )
 
     # Camera start button functionality
     @Slot()
@@ -405,6 +410,7 @@ class MainWindow(QMainWindow):
     # Camera end button functionality
     @Slot()
     def _on_camera_stopped(self) -> None:
+
         self._log_widget.addLine(LogLevel.INFO, "camera stopped", Colour.YELLOW)
         self._camera_worker.clear_detections()
         self._camera_widget.clear_frame()
@@ -432,30 +438,12 @@ class MainWindow(QMainWindow):
 
         self._log_widget.addLine(LogLevel.ERROR, f"Camera error: {message}", Colour.RED)
         
-        self._camera_worker.clear_detections()
-        self._camera_widget.clear_frame()
-        self._start_button.setEnabled(True)
-        self._stop_button.setEnabled(False)
-        self._detection_button.setChecked(False)
-        self._detection_button.setEnabled(False)
-        self._strict_detection_button.setChecked(False)
-        self._strict_detection_button.setEnabled(False)
-        self._link_arm_button.setEnabled(False)
-
-        self._camera_running = False
-
-        self._command_input.clear()
-
-        # No vision should result in break arm link
-        if self._arm_linked:
-            self.break_arm_link_requested.emit()
-
-        # When camera stops reset all these attributes
-        self._reset_attr()
+        self._on_camera_stopped()
 
     # Robot arm worker functionality
 
     def _create_robot_arm_worker(self) -> None:
+        
         self._robot_arm_thread = QThread(self)
 
         arm_connection = self._connect_or_log_error(f"{ARM_CONFIG.model_path}, {ARM_CONFIG.target_path}")
@@ -525,9 +513,9 @@ class MainWindow(QMainWindow):
     # Command input functionality
 
     def _update_submit_button(self) -> None:
-        has_command = bool(self._command_input.text().strip())
+        has_input = bool(self._command_input.text().strip())
 
-        self._submit_button.setEnabled(self._camera_running and has_command)
+        self._submit_button.setEnabled(self._camera_running and has_input)
 
     @Slot()
     def _on_submit_button_clicked(self) -> None:
@@ -536,7 +524,7 @@ class MainWindow(QMainWindow):
         if not input_text:
             return
         
-        sanitized_text = SanitizeInput(input_text).process_input()
+        sanitized_text = InputSanitizer(input_text).process_input()
         
         if not sanitized_text.is_valid or sanitized_text.input is None:
             self._log_widget.addLine(
@@ -545,6 +533,17 @@ class MainWindow(QMainWindow):
                 Colour.RED,
             )
             self._command_input.clear()
+            return
+        elif sanitized_text.command == "default":
+            self._log_widget.addLine(
+                LogLevel.CMD,
+                "moving object to default position...",
+                Colour.BLUE,
+            )
+            self._command_input.clear()
+
+            # Implement function
+            
             return
         
         input_text = sanitized_text.input
@@ -601,7 +600,7 @@ class MainWindow(QMainWindow):
                 f"found with {target.confidence:.0%} confidence",
                 Colour.GREEN
             )
-            
+
             if self._arm_linked:
                 self.pick_target_requested.emit(target)
 

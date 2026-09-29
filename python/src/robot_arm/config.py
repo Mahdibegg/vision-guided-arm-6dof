@@ -85,15 +85,44 @@ def load_simulation_camera_config() -> SimulationCameraConfig:
 
 @dataclass(frozen=True, slots=True)
 class ArmConfig:
+    # Scene object paths
     model_path: str
     target_path: str
+    tip_path: str
+    proximity_sensor_path: str
+    drop_target_path: str
+    table_path: str | None
 
     serial_port: str
     baudrate: int
 
+    # Pick and place
     approach_height_offset: float
-    max_velocity: float
+    travel_height: float
     step_size: float
+    max_descent: float
+    grip_gap: float
+
+    # Motion
+    linear_step: float
+    step_delay: float
+    max_tracking_error: float
+    max_reach: float
+
+    # Home pose in degrees for joints 1 to 6
+    home_joints_deg: tuple[float, ...]
+    home_steps: int
+
+    # Tool frames
+    sensor_offset_z: float
+
+    # IK solver
+    ik_damping: float
+    ik_max_iterations: int
+    ik_retries_per_step: int
+
+    # Legacy values
+    max_velocity: float
     steps_count: int
 
 def load_arm_config() -> ArmConfig:
@@ -102,11 +131,28 @@ def load_arm_config() -> ArmConfig:
     return ArmConfig(
         model_path = data["model_path"],
         target_path = data["target_path"],
+        tip_path = data["tip_path"],
+        proximity_sensor_path = data["proximity_sensor_path"],
+        drop_target_path = data["drop_target_path"],
+        table_path = data["table_path"],
         serial_port = data["serial_port"],
         baudrate = data["baudrate"],
         approach_height_offset = data["approach_height_offset"],
-        max_velocity = data["max_velocity"],
+        travel_height = data["travel_height"],
         step_size = data["step_size"],
+        max_descent = data["max_descent"],
+        grip_gap = data["grip_gap"],
+        linear_step = data["linear_step"],
+        step_delay = data["step_delay"],
+        max_tracking_error = data["max_tracking_error"],
+        max_reach = data["max_reach"],
+        home_joints_deg = tuple(data["home_joints_deg"]),
+        home_steps = data["home_steps"],
+        sensor_offset_z = data["sensor_offset_z"],
+        ik_damping = data["ik_damping"],
+        ik_max_iterations = data["ik_max_iterations"],
+        ik_retries_per_step = data["ik_retries_per_step"],
+        max_velocity = data["max_velocity"],
         steps_count = data["steps_count"]
     )
 

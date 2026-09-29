@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from PySide6.QtCore import QObject, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QTimer, Signal, Slot # type: ignore
 from cv2 import cvtColor, COLOR_BGR2RGB
 from pathlib import Path
 from cv2 import cvtColor, COLOR_BGR2RGB
@@ -156,26 +156,20 @@ class CameraWorker(QObject):
     @Slot(str)
     def accept_grounding_dino_error(
         self,
-        detections: list[Detection],
         description: str,
     ) -> None:
-
+        """Handle a Grounding DINO failure by resetting the busy state."""
         self._grounding_dino_busy = False
 
         # Ignore a result belonging to an older command
         if description != self._detection_description:
             return
 
-        target = max(
-            detections,
-            key = lambda detection: detection.confidence,
-            default = None,
-        )
+        # Clear detections since the model failed to process the request
+        self._grounded_detections = []
+        self._target_object = None
 
-        self._grounded_detections = detections
-        self._target_object = target
-
-        self.target_detected.emit(target)
+        self.target_detected.emit(None)
 
     @Slot(object, str)
     def accept_grounding_dino_result(

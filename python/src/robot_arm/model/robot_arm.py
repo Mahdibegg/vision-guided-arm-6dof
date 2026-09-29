@@ -19,23 +19,63 @@ class RobotArm:
 
         # Retrieve sensor handle from simulation camera
         self._sensor_handle = simulation_camera.sensor_handle
-      
+
         # Get simulation objects using config values
         self._robot_base = self._sim.getObject(config.model_path)
         self._target = self._sim.getObject(config.target_path)
-        self._tip = self._sim.getObject("/UR5/tip")
-        self._pickup_sensor = self._sim.getObject("/UR5/proximitySensor")
-        self._drop_target = self._sim.getObject("/DropTarget")
+        self._tip = self._sim.getObject(config.tip_path)
+        self._pickup_sensor = self._sim.getObject(config.proximity_sensor_path)
+        self._drop_target = self._sim.getObject(config.drop_target_path)
+
+        # The table is optional, it is only used to ignore it when detecting objects
+        self._table = (
+            self._sim.getObject(config.table_path, {"noError": True})
+            if config.table_path else -1
+        )
+
+        # The six UR5 joints and every object that belongs to the robot
+        self._joints = list(
+            self._sim.getObjectsInTree(
+                self._robot_base,
+                self._sim.object_joint_type,
+                0
+            )
+        )
+
+        if len(self._joints) != 6:
+            raise RuntimeError(f"Expected 6 UR5 joints, found {len(self._joints)}")
+
+        self._robot_objects = set(
+            self._sim.getObjectsInTree(
+                self._robot_base,
+                self._sim.handle_all,
+                0
+            )
+        )
 
         # Other robot arm configuration values
         self._steps_count = config.steps_count
+        self._step_size = config.step_size
         self._approach_height_offset = config.approach_height_offset
 
-        self._default_position: Point = (
-                -0.18495,
-                -0.010,
-                0.86255,
-            )
+        # Motion values
+        self._travel_height = config.travel_height
+        self._max_descent = config.max_descent
+        self._grip_gap = config.grip_gap
+        self._linear_step = config.linear_step
+        self._step_delay = config.step_delay
+        self._max_tracking_error = config.max_tracking_error
+        self._max_reach = config.max_reach
+
+        # Home pose is stored in radians, the config gives it in degrees
+        self._home_joints = [math.radians(angle) for angle in config.home_joints_deg]
+        self._home_steps = config.home_steps
+
+        # Tool and IK values
+        self._sensor_offset_z = config.sensor_offset_z
+        self._ik_damping = config.ik_damping
+        self._ik_max_iterations = config.ik_max_iterations
+        self._ik_retries = config.ik_retries_per_step
 
         self._width, self._height = simulation_camera.resolution
 
@@ -51,7 +91,7 @@ class RobotArm:
         self._cx = self._width / 2
         self._cy = self._height / 2
 
-        self._fx = self._width / (2 * math.tan(self._horizontal_fov / 2))     
+        self._fx = self._width / (2 * math.tan(self._horizontal_fov / 2))
         self._fy = self._height / (2 * math.tan(self._vertical_fov / 2))
 
         # Linear transformation matrix for mapping camera to robot frame
@@ -59,6 +99,105 @@ class RobotArm:
             self._sensor_handle,
             self._robot_base
         )
+
+        # Tool orientation (pointing down), set the first time the arm goes home
+        self._tool_quaternion: list[float] | None = None
+
+        # Remember whether a carried object was static so it can be restored on release
+        self._carried_was_static: dict[int, int] = {}
+
+        # Prepare the robot in the scene, then create the IK solver
+        self._make_robot_kinematic()
+        self._fix_tool_frames()
+        self._setup_ik()
+
+    def _make_robot_kinematic(self) -> None:
+        """Switch the joints to kinematic mode and the links to static so the arm never lags."""
+
+        for joint in self._joints:
+            try:
+                mode = self._sim.getJointMode(joint)
+                mode = mode[0] if isinstance(mode, (list, tuple)) else mode
+
+                if mode != self._sim.jointmode_kinematic:
+                    self._sim.setJointMode(joint, self._sim.jointmode_kinematic, 0)
+                    print(f"Joint {joint}: switched to kinematic mode")
+
+            except Exception as e:
+                print(f"WARNING: could not set joint {joint} to kinematic: {e}")
+
+        shapes = self._sim.getObjectsInTree(
+            self._robot_base,
+            self._sim.object_shape_type,
+            0
+        )
+
+        for shape in shapes:
+            try:
+                if self._sim.getObjectInt32Param(shape, self._sim.shapeintparam_static) == 0:
+                    self._sim.setObjectInt32Param(shape, self._sim.shapeintparam_static, 1)
+                    self._sim.resetDynamicObject(shape)
+
+            except Exception as e:
+                print(f"WARNING: could not make shape {shape} static: {e}")
+
+    def _fix_tool_frames(self) -> None:
+        """Place the tip on the flange and the proximity sensor on the tip, both along the tool axis."""
+
+        flange = self._sim.getObjectParent(self._tip)
+
+        # Tip sits exactly on the flange, so its Z axis is the tool axis
+        self._sim.setObjectPose(
+            self._tip,
+            [0, 0, 0, 0, 0, 0, 1],
+            flange
+        )
+
+        if self._sim.getObjectParent(self._pickup_sensor) != self._tip:
+            self._sim.setObjectParent(self._pickup_sensor, self._tip, True)
+
+        # Sensor looks along the tool axis, so it points down whenever the tool does
+        self._sim.setObjectPose(
+            self._pickup_sensor,
+            [0, 0, self._sensor_offset_z, 0, 0, 0, 1],
+            self._tip
+        )
+
+    def _setup_ik(self) -> None:
+        """Create the IK solver that holds both position and orientation of the tip."""
+
+        try:
+            self._simIK = self._client.require("simIK")
+        except Exception:
+            self._simIK = self._client.getObject("simIK")
+
+        self._ik_env = self._simIK.createEnvironment()
+        self._ik_group = self._simIK.createGroup(self._ik_env)
+
+        self._simIK.setGroupCalculation(
+            self._ik_env,
+            self._ik_group,
+            self._simIK.method_damped_least_squares,
+            self._ik_damping,
+            self._ik_max_iterations
+        )
+
+        # Pose constraint keeps the wrist orientation fixed while the target moves
+        self._simIK.addElementFromScene(
+            self._ik_env,
+            self._ik_group,
+            self._robot_base,
+            self._tip,
+            self._target,
+            self._simIK.constraint_pose
+        )
+
+    def close(self) -> None:
+        """Release the IK solver."""
+        try:
+            self._simIK.eraseEnvironment(self._ik_env)
+        except Exception:
+            pass
 
     def is_simulation_running(self) -> bool:
         """Return whether CoppeliaSim client connection is active."""
@@ -76,19 +215,18 @@ class RobotArm:
             raise RuntimeError(
                 f"ARM_SIM_ERROR: Failed to retrieve depth buffer: {e}"
             ) from e
- 
+
         depth_map: np.ndarray = np.frombuffer(depth_bytes, dtype=np.float32).reshape(
             (resolution[1], resolution[0])
         )
         return np.flipud(depth_map)
 
-    # Applying the matrix transformation to a 2d point
     def pixel_to_robot(self, u: float, v: float) -> Point:
         # Linear transformation shorthand
         m = self._camera_to_robot
         depth = self.read_depth()
 
-        D = float(depth[v, u])
+        D = float(depth[int(v), int(u)])
 
         # Pixel -> Camera XYZ
         x_cam = -(u - self._cx) * D / self._fx
@@ -100,90 +238,237 @@ class RobotArm:
         y_robot = m[4] * x_cam + m[5] * y_cam + m[6] * z_cam + m[7]
         z_robot = m[8] * x_cam + m[9] * y_cam + m[10] * z_cam + m[11]
 
-        return [x_robot, y_robot, z_robot]
+        return (x_robot, y_robot, z_robot)
 
-    # Moving the target smoothly to a destination
+    def _tip_position(self) -> np.ndarray:
+        """Return the current TCP position in the robot frame."""
+        return np.array(self._sim.getObjectPosition(self._tip, self._robot_base))
+
+    def _snap_target_to_tip(self) -> None:
+        """Put the target exactly on the tip so the IK solver has nothing left to chase."""
+
+        pose = self._sim.getObjectPose(self._tip, self._robot_base)
+
+        self._sim.setObjectPose(self._target, pose, self._robot_base)
+
+    def _set_target(self, position: Point) -> None:
+        """Move the target to a position while keeping the tool orientation pointing down."""
+
+        if self._tool_quaternion is None:
+            raise RuntimeError("Call go_home() first so the tool orientation is known.")
+
+        pose = [float(position[0]), float(position[1]), float(position[2])] + list(self._tool_quaternion)
+
+        self._sim.setObjectPose(self._target, pose, self._robot_base)
+
+    def _solve_ik(self) -> bool:
+        """Run the IK solver once and return whether it succeeded."""
+
+        try:
+            result = self._simIK.handleGroup(
+                self._ik_env,
+                self._ik_group,
+                {"syncWorlds": True}
+            )
+            code = result[0] if isinstance(result, (list, tuple)) else result
+
+            return code == self._simIK.result_success
+
+        except Exception:
+            # Older simIK API (CoppeliaSim 4.2)
+            self._simIK.applyIkEnvironmentToScene(self._ik_env, self._ik_group)
+
+            return True
+
+    def _check_reachable(self, point: Point) -> None:
+        """Refuse points that are too far from the base for the tool to reach pointing down."""
+
+        radius = math.hypot(point[0], point[1])
+
+        if radius > self._max_reach:
+            raise RuntimeError(
+                f"Point {tuple(round(p, 3) for p in point)} is {radius:.2f} m from the base, "
+                f"the maximum with the tool pointing down is {self._max_reach} m."
+            )
+
+    def _move_linear(self, destination: Point) -> None:
+        """Move the tip in a straight line to a point, solving IK in small steps."""
+
+        destination = np.array(destination, dtype=float)
+
+        self._check_reachable(destination)
+
+        start = self._tip_position()
+
+        steps = max(1, math.ceil(np.linalg.norm(destination - start) / self._linear_step))
+
+        for i in range(1, steps + 1):
+            waypoint = start + (destination - start) * (i / steps)
+
+            self._set_target(waypoint)
+
+            # Give the solver a few attempts at each waypoint
+            for _ in range(self._ik_retries):
+                if self._solve_ik():
+                    break
+
+            # Stop instead of continuing if the tip cannot follow the target
+            error = np.linalg.norm(self._tip_position() - waypoint)
+
+            if error > self._max_tracking_error:
+                self._snap_target_to_tip()
+
+                raise RuntimeError(
+                    f"IK could not follow the path (error {error:.3f} m at "
+                    f"{waypoint.round(3).tolist()}). Stopped safely."
+                )
+
+            time.sleep(self._step_delay)
+
+    def _move_via_travel_height(self, destination: Point) -> None:
+        """Go up to the travel height, across, then down so the tip never drags through the table."""
+
+        current = self._tip_position()
+
+        travel_z = max(self._travel_height, current[2], destination[2])
+
+        self._move_linear((current[0], current[1], travel_z))
+        self._move_linear((destination[0], destination[1], travel_z))
+        self._move_linear(destination)
+
+    def move_to(self, robot_point: Point) -> None:
+        """Move the tip in a straight line onto a robot frame point."""
+        self._move_linear(robot_point)
+
     def move_target_smoothly(self, destination: Point) -> None:
-        start = self._sim.getObjectPosition(self._target, self._robot_base)
+        """Move to a destination via the travel height, keeping the tool orientation fixed."""
+        self._move_via_travel_height(destination)
 
-        for i in range(1, self._steps_count + 1):
-            t = i / self._steps_count
-
-            new_position = [
-                start[0] + (destination[0] - start[0]) * t,
-                start[1] + (destination[1] - start[1]) * t,
-                start[2] + (destination[2] - start[2]) * t
-            ]
-
-            self._sim.setObjectPosition(self._target, new_position, self._robot_base)
-
-            time.sleep(0.01)
-
-    # Going into the "pick" position
     def move_above(self, robot_point: Point) -> Point:
-        approach = [
+        """Move to the approach position above a robot frame point."""
+
+        approach = (
             robot_point[0],
             robot_point[1],
             robot_point[2] + self._approach_height_offset
-        ]
+        )
 
-        self.move_target_smoothly(approach)
+        print("Detected robot point:", [round(c, 4) for c in robot_point])
+        print("Approach point:", [round(c, 4) for c in approach])
+
+        self._move_via_travel_height(approach)
+
+        print("Final TCP:", self._tip_position().round(4).tolist())
 
         return approach
 
+    def pick_and_place(self, robot_point: Point) -> None:
+        """Combine private functions to carry out a full pick and place based on a robot point"""
+
+        # The tool orientation is only known once the arm has been home
+        if self._tool_quaternion is None:
+            self.go_home()
+
+        object_handle = self._pick_object(robot_point)
+        self._drop_object(object_handle)
+        self.return_to_default_position()
+
+        print("PICK AND PLACE COMPLETE")
+
+    def go_home(self) -> None:
+        """Move the joints to the bent home pose and remember the tool orientation."""
+
+        start = [self._sim.getJointPosition(joint) for joint in self._joints]
+
+        for i in range(1, self._home_steps + 1):
+            t = i / self._home_steps
+
+            for joint, a, b in zip(self._joints, start, self._home_joints):
+                self._sim.setJointPosition(joint, a + (b - a) * t)
+
+            time.sleep(self._step_delay)
+
+        self._snap_target_to_tip()
+
+        # The first time home is reached, the tool is pointing down so store that orientation
+        if self._tool_quaternion is None:
+            self._tool_quaternion = list(
+                self._sim.getObjectQuaternion(self._tip, self._robot_base)
+            )
+
+        print("HOME reached. TCP:", self._tip_position().round(4).tolist())
+
+    def return_to_default_position(self) -> None:
+        """Return the arm to the home pose defined in the config."""
+        self.go_home()
+
     # Lower the TCP until the proximity sensor detects an object
-    def _lower_until_detected(
-        self,
-        step_size: float = 0.002,
-        max_descent: float = 0.30,
-    ) -> int:
+    def _lower_until_detected(self) -> int:
 
-        start = self._sim.getObjectPosition(
-            self._target,
-            self._robot_base
-        )
+        start = self._tip_position()
 
-        minimum_z = start[2] - max_descent
+        minimum_z = start[2] - self._max_descent
 
         while True:
             result, distance, point, detected_object, normal = (
-                self._sim.readProximitySensor(self._pickup_sensor)
+                self._sim.checkProximitySensor(
+                    self._pickup_sensor,
+                    self._sim.handle_all
+                )
             )
 
-            # Stop lowering once an object is detected
-            if result == 1:
+            # Ignore the table and the robot itself, only real objects count
+            if (
+                result == 1
+                and detected_object != self._table
+                and detected_object not in self._robot_objects
+            ):
                 print(
                     f"Detected object {detected_object} "
                     f"at {distance:.4f} m"
                 )
 
+                # Close the remaining gap so the tip stops right at the object
+                gap = max(0.0, distance - self._grip_gap)
+
+                current = self._tip_position()
+
+                self._move_linear((current[0], current[1], current[2] - gap))
+
                 return detected_object
 
-            current = self._sim.getObjectPosition(
-                self._target,
-                self._robot_base
-            )
+            current = self._tip_position()
 
             # Safety check so the robot cannot keep lowering forever
-            if current[2] <= minimum_z:
+            if current[2] - self._step_size < minimum_z:
                 raise RuntimeError(
                     "Pickup failed: no object detected."
                 )
 
-            # Lower the target by 2 mm
-            current[2] -= step_size
+            # Lower the tip by one step
+            self._move_linear((current[0], current[1], current[2] - self._step_size))
 
-            self._sim.setObjectPosition(
-                self._target,
-                current,
-                self._robot_base
+    def _attach_object(self, object_handle: int) -> None:
+
+        # Make the object static while carried so physics cannot fight the parenting
+        try:
+            was_static = self._sim.getObjectInt32Param(
+                object_handle,
+                self._sim.shapeintparam_static
             )
 
-            time.sleep(0.02)
+            self._carried_was_static[object_handle] = was_static
 
+            self._sim.setObjectInt32Param(
+                object_handle,
+                self._sim.shapeintparam_static,
+                1
+            )
+            self._sim.resetDynamicObject(object_handle)
 
-    # Simulate suction by attaching the object to the TCP
-    def _attach_object(self, object_handle: int) -> None:
+        except Exception:
+            # Not a shape, parenting still works
+            pass
 
         self._sim.setObjectParent(
             object_handle,
@@ -191,8 +476,6 @@ class RobotArm:
             True
         )
 
-
-    # Release the object from the TCP
     def _release_object(self, object_handle: int) -> None:
 
         self._sim.setObjectParent(
@@ -201,48 +484,44 @@ class RobotArm:
             True
         )
 
+        # Restore the object's original physics state
+        was_static = self._carried_was_static.pop(object_handle, None)
 
-    # Lift vertically from the current position
+        if was_static is not None:
+            self._sim.setObjectInt32Param(
+                object_handle,
+                self._sim.shapeintparam_static,
+                was_static
+            )
+            self._sim.resetDynamicObject(object_handle)
+
     def _lift(self, height: float | None = None) -> Point:
 
         if height is None:
             height = self._approach_height_offset
 
-        current = self._sim.getObjectPosition(
-            self._target,
-            self._robot_base
-        )
+        current = self._tip_position()
 
-        destination = [
+        # Never lift to less than the travel height
+        destination = (
             current[0],
             current[1],
-            current[2] + height
-        ]
+            max(self._travel_height, current[2] + height)
+        )
 
-        self.move_target_smoothly(destination)
+        self._move_linear(destination)
 
         return destination
 
-
-    # Approach the object, detect it, attach it and lift it
     def _pick_object(self, robot_point: Point) -> int:
 
-        # Move to a safe position above the object
         self.move_above(robot_point)
-
-        # Lower until the proximity sensor detects the object
         detected_object = self._lower_until_detected()
-
-        # Simulate turning the suction on
         self._attach_object(detected_object)
-
-        # Lift the object away from the table
         self._lift()
 
         return detected_object
 
-
-    # Move to the configured drop target
     def _move_to_drop_target(self) -> Point:
 
         drop_position = self._sim.getObjectPosition(
@@ -250,45 +529,18 @@ class RobotArm:
             self._robot_base
         )
 
-        destination = [
+        destination = (
             drop_position[0],
             drop_position[1],
             drop_position[2]
-        ]
+        )
 
-        self.move_target_smoothly(destination)
+        self._move_via_travel_height(destination)
 
         return destination
 
-
-    # Move to the drop target, release the object and lift away
     def _drop_object(self, object_handle: int) -> None:
 
         self._move_to_drop_target()
-
-        # Simulate turning suction off
         self._release_object(object_handle)
-
-        # Move away from the released object
         self._lift()
-
-
-    # Return the robot to its default/home position
-    def _return_to_default_position(self) -> Point:
-
-        self.move_target_smoothly(self._default_position)
-
-        return self._default_position
-
-
-    # Complete pick-and-place sequence
-    def pick_and_place(self, robot_point: Point) -> None:
-
-        # Pick up the detected object
-        object_handle = self._pick_object(robot_point)
-
-        # Move it to the drop location and release it
-        self._drop_object(object_handle)
-
-        # Return the robot to its home position
-        self._return_to_default_position()

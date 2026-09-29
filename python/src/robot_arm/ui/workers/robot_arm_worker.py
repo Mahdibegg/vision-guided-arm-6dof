@@ -10,7 +10,7 @@ class RobotArmWorker(QObject):
     """
     RobotArmWorker is responsible for owning the live link to the CoppeliaSim
     robot arm and running its movement commands in a Qt compatible manner.
-    Movement (move_target_smoothly / move_above) blocks for the duration of
+    Movement (move_above / move_to / pick_and_place) blocks for the duration of
     the motion via time.sleep(), so this worker is meant to run on its own
     QThread, the same way CameraWorker does, so it never freezes the GUI thread.
     It emits signals for linked, link_broken, error and movement progress.
@@ -55,6 +55,10 @@ class RobotArmWorker(QObject):
 
         try:
             self._robot_arm = self._robot_arm_factory()
+
+            # Move to the home pose straight away so the tool orientation is locked
+            self._robot_arm.go_home()
+
             self.linked.emit()
 
         except Exception as error:
@@ -67,23 +71,60 @@ class RobotArmWorker(QObject):
         if self._robot_arm is None:
             return
 
+        # Release the IK solver before dropping the arm
+        self._robot_arm.close()
+
         self._robot_arm = None
         self.link_broken.emit()
 
+    # Returning to the home pose
+    @Slot()
+    def go_home(self) -> None:
+        """Move the arm back to its home pose."""
+        if self._robot_arm is None:
+            self.error.emit("Cannot move: robot arm is not linked.")
+            return
+
+        try:
+            self.movement_started.emit()
+
+            self._robot_arm.go_home()
+
+            self.movement_finished.emit(None)
+
+        except Exception as error:
+            self.error.emit(str(error))
+
     @Slot(object)
     def pick_target(self, target: Detection) -> None:
-        """Move to and pick up a detected target, using its pixel bounding box centre."""
+        """Pick up and place a detected target using its bounding box centre."""
+
         if target is None:
             self.error.emit("Cannot pick: no target detected.")
             return
- 
+
+        if self._robot_arm is None:
+            self.error.emit("Cannot pick: robot arm is not linked.")
+            return
+
+        # Get the centre pixel of the detected object's bounding box
         x1, y1, x2, y2 = target.x1, target.y1, target.x2, target.y2
         u = int((x1 + x2) / 2)
         v = int((y1 + y2) / 2)
- 
-        self.move_to_pixel(u, v)
-        
-        # Final action is to pick up the target and drop
+
+        try:
+            self.movement_started.emit()
+
+            # Convert camera pixel into robot coordinates
+            robot_point = self._robot_arm.pixel_to_robot(u, v)
+
+            # Run the complete pickup and drop routine
+            self._robot_arm.pick_and_place(robot_point)
+
+            self.movement_finished.emit(robot_point)
+
+        except Exception as error:
+            self.error.emit(str(error))
 
     # Moving above a target point (the "approach" position)
     @Slot(object)
@@ -136,7 +177,9 @@ class RobotArmWorker(QObject):
             robot_point = self._robot_arm.pixel_to_robot(u, v)
 
             self._robot_arm.move_above(robot_point)
-            self._robot_arm.move_target_smoothly(robot_point)
+
+            # Descend straight down onto the point with the tool orientation fixed
+            self._robot_arm.move_to(robot_point)
 
             self.movement_finished.emit(robot_point)
 
