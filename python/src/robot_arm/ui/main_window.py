@@ -1,45 +1,42 @@
 from __future__ import annotations
 
+from config import (
+    load_app_config,
+    load_arm_config,
+    load_camera_config,
+    load_grounding_dino_config,
+    load_grounding_dino_weights,
+    load_simulation_camera_config,
+    load_simulation_config,
+    load_yolo_model,
+)
+from model.robot_arm import RobotArm
 from PySide6.QtCore import (
     QMetaObject,
-    QThread,
     Qt,
+    QThread,
     Signal,
     Slot,
 )
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QGridLayout,
+    QHBoxLayout,
     QLineEdit,
     QMainWindow,
     QPushButton,
     QWidget,
-    QHBoxLayout,
 )
-
-from simulation.connection import (
-    SimulationConnection,
-    connect_to_simulation
-)
-from model.robot_arm import RobotArm
-from vision.cameras.simulation_camera import SimulationCamera
-from vision.detect import Detection, is_valid_detection
+from simulation.connection import SimulationConnection, connect_to_simulation
+from ui.widgets.camera_widget import CameraWidget
+from ui.widgets.log_widget import Colour, LogLevel, LogWidget
+from ui.workers.camera_worker import CameraWorker
 from ui.workers.grounding_dino_worker import GroundingDinoWorker
 from ui.workers.robot_arm_worker import RobotArmWorker
-from ui.workers.camera_worker import CameraWorker
-from ui.widgets.camera_widget import CameraWidget
-from ui.widgets.log_widget import LogWidget, LogLevel, Colour
+from vision.cameras.simulation_camera import SimulationCamera
+from vision.detect import Detection, is_valid_detection
+
 from .validation import InputSanitizer
-from config import (
-    load_camera_config,
-    load_app_config,
-    load_grounding_dino_config,
-    load_grounding_dino_weights,
-    load_yolo_model,
-    load_simulation_camera_config,
-    load_arm_config,
-    load_simulation_config
-)
 
 APP_CONFIG = load_app_config()
 CAMERA_CONFIG = load_camera_config()
@@ -49,6 +46,7 @@ ARM_CONFIG = load_arm_config()
 SIMULATION_CONFIG = load_simulation_config()
 GROUNDING_DINO_CONFIG = load_grounding_dino_config()
 GROUNDING_DINO_WEIGHTS = load_grounding_dino_weights()
+
 
 class MainWindow(QMainWindow):
     start_camera_requested = Signal()
@@ -72,7 +70,7 @@ class MainWindow(QMainWindow):
         self._camera_running = False
         self._strict_detection = False
         self._arm_linked = False
-        
+
         self._create_widgets()
         self._create_layout()
         self._create_robot_arm_worker()
@@ -85,7 +83,7 @@ class MainWindow(QMainWindow):
         if self._camera_worker is not None:
             # Set the description in camera worker
             self._camera_worker.set_detection_description(description)
-            
+
             # Trigger detection in background thread
             self._camera_worker._grounding_dino_worker.run_detection()
 
@@ -94,7 +92,7 @@ class MainWindow(QMainWindow):
         """Clear Grounding DINO detection state."""
         if self._camera_worker is not None:
             self._camera_worker.clear_detections()
-        
+
     # Close any threads that are running when exiting the program
     def closeEvent(self, event: QCloseEvent) -> None:
 
@@ -142,29 +140,31 @@ class MainWindow(QMainWindow):
 
     # Connection helper functions
 
-    def _connect_or_log_error(self, object_connected: str) -> SimulationConnection | None:
+    def _connect_or_log_error(
+        self, object_connected: str
+    ) -> SimulationConnection | None:
         """Open a simulation connection on the GUI thread, logging success or failure."""
         try:
             connection = connect_to_simulation()
             self._log_simulation_connection(object_connected, True)
             return connection
-        except ConnectionError as e:
+        except ConnectionError:
             self._log_simulation_connection(object_connected, False)
             return None
-        
+
     def _log_simulation_connection(self, object_connected: str, success: bool) -> None:
         if success:
             """Log a successful connection to CoppeliaSim."""
             self._log_widget.addLine(
                 LogLevel.INFO,
                 "successfully connected to CoppeliaSim\n                  "
-                f"@ {SIMULATION_CONFIG.host}:{SIMULATION_CONFIG.port} on '{object_connected}'"
+                f"@ {SIMULATION_CONFIG.host}:{SIMULATION_CONFIG.port} on '{object_connected}'",
             )
         else:
             self._log_widget.addLine(
                 LogLevel.ERROR,
                 f"failed to connect to {SIMULATION_CONFIG.host}:{SIMULATION_CONFIG.port} on '{object_connected}'",
-                Colour.RED
+                Colour.RED,
             )
 
     # Keep the init function small by having all the widgets in a private function
@@ -172,8 +172,7 @@ class MainWindow(QMainWindow):
         self._camera_widget = CameraWidget(APP_CONFIG.styles.camera_widget)
 
         self._log_widget = LogWidget(
-            APP_CONFIG.styles.log_widget,
-            APP_CONFIG.log.max_lines
+            APP_CONFIG.styles.log_widget, APP_CONFIG.log.max_lines
         )
 
         # Input box for user input
@@ -208,7 +207,7 @@ class MainWindow(QMainWindow):
 
         self._start_button = QPushButton("Start Camera")
         self._stop_button = QPushButton("Stop Camera")
-        self._stop_button.setEnabled(False) # Disable stop button by default
+        self._stop_button.setEnabled(False)  # Disable stop button by default
 
     def _create_layout(self) -> None:
         main_layout = QGridLayout()
@@ -302,8 +301,12 @@ class MainWindow(QMainWindow):
         self._camera_worker.started.connect(self._on_camera_started)
         self._camera_worker.stopped.connect(self._on_camera_stopped)
         self._camera_worker.error.connect(self._on_camera_error)
-        self.full_detection_requested.connect(self._camera_worker.set_full_detection_enabled)
-        self.detection_description_requested.connect(self._camera_worker.set_detection_description)
+        self.full_detection_requested.connect(
+            self._camera_worker.set_full_detection_enabled
+        )
+        self.detection_description_requested.connect(
+            self._camera_worker.set_detection_description
+        )
 
         self._camera_worker.target_detected.connect(self._on_target_detected)
 
@@ -317,7 +320,7 @@ class MainWindow(QMainWindow):
         self._robot_arm_worker.error.connect(self._on_arm_error)
         self._robot_arm_worker.movement_started.connect(self._on_arm_movement_started)
         self._robot_arm_worker.movement_finished.connect(self._on_arm_movement_finished)
-        
+
         self.pick_target_requested.connect(self._robot_arm_worker.pick_target)
         # Click on the camera view to choose where the next pick is dropped
         self._camera_widget.pixel_clicked.connect(self._on_camera_clicked)
@@ -331,7 +334,9 @@ class MainWindow(QMainWindow):
     def _create_camera_worker(self) -> None:
         self._camera_thread = QThread(self)
 
-        camera_connection = self._connect_or_log_error(SIMULATION_CAMERA_CONFIG.sensor_path)
+        camera_connection = self._connect_or_log_error(
+            SIMULATION_CAMERA_CONFIG.sensor_path
+        )
 
         # Log messages already handled, don't continue if no camera connection
         if not camera_connection:
@@ -353,26 +358,38 @@ class MainWindow(QMainWindow):
         self._camera_worker.moveToThread(self._camera_thread)
 
         self._camera_thread.finished.connect(self._camera_worker.deleteLater)
-        
+
         self._grounding_dino_thread = QThread(self)
 
         # Do not give this worker a parent because it must be moved
         # from the GUI thread into the Grounding DINO thread
         self._grounding_dino_worker = GroundingDinoWorker(
-            config_path = GROUNDING_DINO_CONFIG,
-            weights_path = GROUNDING_DINO_WEIGHTS,
-            yolo_model_name = YOLO_CONFIG,
+            config_path=GROUNDING_DINO_CONFIG,
+            weights_path=GROUNDING_DINO_WEIGHTS,
+            yolo_model_name=YOLO_CONFIG,
         )
 
         self._grounding_dino_worker.moveToThread(self._grounding_dino_thread)
-        self._grounding_dino_thread.finished.connect(self._grounding_dino_worker.deleteLater)
+        self._grounding_dino_thread.finished.connect(
+            self._grounding_dino_worker.deleteLater
+        )
 
         # Load the model after the worker enters its own thread.
-        self._grounding_dino_thread.started.connect(self._grounding_dino_worker.initialize)
-        self._camera_worker.grounding_dino_requested.connect(self._grounding_dino_worker.detect)
-        self._grounding_dino_worker.ready.connect(self._camera_worker.set_grounding_dino_ready)
-        self._grounding_dino_worker.detection_complete.connect(self._camera_worker.accept_grounding_dino_result)
-        self._grounding_dino_worker.error.connect(self._camera_worker.accept_grounding_dino_error)
+        self._grounding_dino_thread.started.connect(
+            self._grounding_dino_worker.initialize
+        )
+        self._camera_worker.grounding_dino_requested.connect(
+            self._grounding_dino_worker.detect
+        )
+        self._grounding_dino_worker.ready.connect(
+            self._camera_worker.set_grounding_dino_ready
+        )
+        self._grounding_dino_worker.detection_complete.connect(
+            self._camera_worker.accept_grounding_dino_result
+        )
+        self._grounding_dino_worker.error.connect(
+            self._camera_worker.accept_grounding_dino_error
+        )
         self._grounding_dino_worker.error.connect(self._on_grounding_dino_worker_error)
 
         self._camera_thread.start()
@@ -382,9 +399,7 @@ class MainWindow(QMainWindow):
     def _on_grounding_dino_worker_error(self, message: str) -> None:
         # Safely update the UI from the main thread
         self._log_widget.addLine(
-            LogLevel.ERROR, 
-            f"Grounding Dino Worker error: {message}", 
-            Colour.RED
+            LogLevel.ERROR, f"Grounding Dino Worker error: {message}", Colour.RED
         )
 
     # Camera start button functionality
@@ -395,7 +410,7 @@ class MainWindow(QMainWindow):
             self._log_widget.addLine(
                 LogLevel.WARNING,
                 "start CoppeliaSim simulation to render frames",
-                Colour.YELLOW
+                Colour.YELLOW,
             )
         else:
             self._log_widget.addLine(
@@ -443,16 +458,18 @@ class MainWindow(QMainWindow):
     def _on_camera_error(self, message: str) -> None:
 
         self._log_widget.addLine(LogLevel.ERROR, f"Camera error: {message}", Colour.RED)
-        
+
         self._on_camera_stopped()
 
     # Robot arm worker functionality
 
     def _create_robot_arm_worker(self) -> None:
-        
+
         self._robot_arm_thread = QThread(self)
 
-        arm_connection = self._connect_or_log_error(f"{ARM_CONFIG.model_path}, {ARM_CONFIG.target_path}")
+        arm_connection = self._connect_or_log_error(
+            f"{ARM_CONFIG.model_path}, {ARM_CONFIG.target_path}"
+        )
 
         # Don't construct the RobotArm eagerly - link() builds it on the
         # worker's own thread, once the camera (and its vision sensor) is active
@@ -477,11 +494,14 @@ class MainWindow(QMainWindow):
         active_camera = self._camera_worker.camera
 
         # No running simulation check since its assumed to be running
-        if active_camera is None and not self._robot_arm_worker.arm.is_simulation_running:
+        if (
+            active_camera is None
+            and not self._robot_arm_worker.arm.is_simulation_running
+        ):
             self._log_widget.addLine(
                 LogLevel.ERROR,
                 "Cannot link arm: Vision sensor is not running",
-                Colour.RED
+                Colour.RED,
             )
             return
 
@@ -494,7 +514,9 @@ class MainWindow(QMainWindow):
     def _on_arm_linked(self) -> None:
         self._arm_linked = True
         self._link_arm_button.setChecked(True)
-        self._log_widget.addLine(LogLevel.INFO, "Robot arm linked successfully", Colour.GREEN)
+        self._log_widget.addLine(
+            LogLevel.INFO, "Robot arm linked successfully", Colour.GREEN
+        )
 
     @Slot()
     def _on_arm_link_broken(self) -> None:
@@ -507,7 +529,9 @@ class MainWindow(QMainWindow):
         self._camera_widget.clear_drop_marker()
         self._arm_linked = False
         self._link_arm_button.setChecked(False)
-        self._log_widget.addLine(LogLevel.ERROR, f"Robot arm error: {message}", Colour.RED)
+        self._log_widget.addLine(
+            LogLevel.ERROR, f"Robot arm error: {message}", Colour.RED
+        )
 
     @Slot()
     def _on_arm_movement_started(self) -> None:
@@ -526,7 +550,7 @@ class MainWindow(QMainWindow):
             self._log_widget.addLine(
                 LogLevel.WARNING,
                 "link the arm before choosing a drop point",
-                Colour.YELLOW
+                Colour.YELLOW,
             )
             return
 
@@ -542,16 +566,14 @@ class MainWindow(QMainWindow):
         self._log_widget.addLine(
             LogLevel.INFO,
             f"drop point set at x={drop_point[0]:.3f} y={drop_point[1]:.3f}, enter an object to pick",
-            Colour.GREEN
+            Colour.GREEN,
         )
 
     @Slot(str)
     def _on_drop_point_rejected(self, message: str) -> None:
         self._camera_widget.clear_drop_marker()
         self._log_widget.addLine(
-            LogLevel.WARNING,
-            f"drop point rejected: {message}",
-            Colour.YELLOW
+            LogLevel.WARNING, f"drop point rejected: {message}", Colour.YELLOW
         )
 
     # Command input functionality
@@ -567,9 +589,9 @@ class MainWindow(QMainWindow):
 
         if not input_text:
             return
-        
+
         sanitized_text = InputSanitizer(input_text).process_input()
-        
+
         if not sanitized_text.is_valid or sanitized_text.input is None:
             self._log_widget.addLine(
                 LogLevel.ERROR,
@@ -578,16 +600,16 @@ class MainWindow(QMainWindow):
             )
             self._command_input.clear()
             return
-        
+
         input_text = sanitized_text.input
-        
+
         self._target_reported = False
-        
+
         self.detection_description_requested.emit(input_text)
 
         self._log_widget.addLine(LogLevel.CMD, input_text)
         self._log_widget.addLine(LogLevel.DEBUG, "parsing command data...")
-        
+
         self._command_input.clear()
 
     # Full detection mode for identifying all objects
@@ -596,9 +618,13 @@ class MainWindow(QMainWindow):
         self.full_detection_requested.emit(enabled)
 
         if enabled:
-            self._log_widget.addLine(LogLevel.INFO, "full detection enabled", Colour.BLUE)
+            self._log_widget.addLine(
+                LogLevel.INFO, "full detection enabled", Colour.BLUE
+            )
         else:
-            self._log_widget.addLine(LogLevel.INFO, "full detection disabled", Colour.YELLOW)
+            self._log_widget.addLine(
+                LogLevel.INFO, "full detection disabled", Colour.YELLOW
+            )
 
     # Strict detection mode for filtering out low confidence level objects
     def _on_strict_detection_toggled(self) -> None:
@@ -606,11 +632,15 @@ class MainWindow(QMainWindow):
         self._strict_detection = not self._strict_detection
 
         self._camera_worker.clear_detections()
-        
+
         if self._strict_detection:
-            self._log_widget.addLine(LogLevel.INFO, "strict detection enabled", Colour.BLUE)
+            self._log_widget.addLine(
+                LogLevel.INFO, "strict detection enabled", Colour.BLUE
+            )
         else:
-            self._log_widget.addLine(LogLevel.INFO, "strict detection disabled", Colour.YELLOW)
+            self._log_widget.addLine(
+                LogLevel.INFO, "strict detection disabled", Colour.YELLOW
+            )
 
     @Slot(object)
     def _on_target_detected(
@@ -621,17 +651,18 @@ class MainWindow(QMainWindow):
 
         if target is None or self._target_reported:
             return
-        
+
         self._target_reported = True
 
         valid_target = is_valid_detection(target)
 
         if valid_target or not self._strict_detection:
-            self._log_widget.addLine(LogLevel.INFO,
+            self._log_widget.addLine(
+                LogLevel.INFO,
                 "Detection complete: "
                 f"{target.description or target.class_name} "
                 f"found with {target.confidence:.0%} confidence",
-                Colour.GREEN
+                Colour.GREEN,
             )
 
             if self._arm_linked:
@@ -640,11 +671,12 @@ class MainWindow(QMainWindow):
 
         else:
             # Use the available target to report error then clear the target data so nothing is drawn
-            self._log_widget.addLine(LogLevel.ERROR,
+            self._log_widget.addLine(
+                LogLevel.ERROR,
                 "Detection failure: "
                 f"{target.description or target.class_name} "
                 f"could not be found",
-                Colour.RED
+                Colour.RED,
             )
 
             self._camera_worker.clear_detections()

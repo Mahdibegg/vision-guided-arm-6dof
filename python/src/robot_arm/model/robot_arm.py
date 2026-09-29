@@ -1,17 +1,23 @@
 import math as math
 import time
-import numpy as np
-from typing import Any, TypeAlias
+from typing import TypeAlias
 
+import numpy as np
+from config import ArmConfig
 from simulation.connection import SimulationConnection
 from vision.cameras.simulation_camera import SimulationCamera
-from config import ArmConfig
 
 # Shorthand for typing a 3D point
 Point: TypeAlias = tuple[float, float, float]
 
+
 class RobotArm:
-    def __init__(self, connection: SimulationConnection, simulation_camera: SimulationCamera, config: ArmConfig) -> None:
+    def __init__(
+        self,
+        connection: SimulationConnection,
+        simulation_camera: SimulationCamera,
+        config: ArmConfig,
+    ) -> None:
         # Storing connection for any methods for SimulationConnection to be used (so far none)
         self._connection = connection
         self._client, self._sim = connection.client, connection.sim
@@ -30,27 +36,20 @@ class RobotArm:
         # The table is optional, it is only used to ignore it when detecting objects
         self._table = (
             self._sim.getObject(config.table_path, {"noError": True})
-            if config.table_path else -1
+            if config.table_path
+            else -1
         )
 
         # The six UR5 joints and every object that belongs to the robot
         self._joints = list(
-            self._sim.getObjectsInTree(
-                self._robot_base,
-                self._sim.object_joint_type,
-                0
-            )
+            self._sim.getObjectsInTree(self._robot_base, self._sim.object_joint_type, 0)
         )
 
         if len(self._joints) != 6:
             raise RuntimeError(f"Expected 6 UR5 joints, found {len(self._joints)}")
 
         self._robot_objects = set(
-            self._sim.getObjectsInTree(
-                self._robot_base,
-                self._sim.handle_all,
-                0
-            )
+            self._sim.getObjectsInTree(self._robot_base, self._sim.handle_all, 0)
         )
 
         # Other robot arm configuration values
@@ -80,12 +79,10 @@ class RobotArm:
         self._width, self._height = simulation_camera.resolution
 
         self._horizontal_fov = self._sim.getObjectFloatParam(
-            self._sensor_handle,
-            self._sim.visionfloatparam_perspective_angle
+            self._sensor_handle, self._sim.visionfloatparam_perspective_angle
         )
         self._vertical_fov = 2 * math.atan(
-            (self._height / self._width)
-            * math.tan(self._horizontal_fov / 2)
+            (self._height / self._width) * math.tan(self._horizontal_fov / 2)
         )
 
         self._cx = self._width / 2
@@ -96,8 +93,7 @@ class RobotArm:
 
         # Linear transformation matrix for mapping camera to robot frame
         self._camera_to_robot = self._sim.getObjectMatrix(
-            self._sensor_handle,
-            self._robot_base
+            self._sensor_handle, self._robot_base
         )
 
         # Tool orientation (pointing down), set the first time the arm goes home
@@ -127,15 +123,18 @@ class RobotArm:
                 print(f"WARNING: could not set joint {joint} to kinematic: {e}")
 
         shapes = self._sim.getObjectsInTree(
-            self._robot_base,
-            self._sim.object_shape_type,
-            0
+            self._robot_base, self._sim.object_shape_type, 0
         )
 
         for shape in shapes:
             try:
-                if self._sim.getObjectInt32Param(shape, self._sim.shapeintparam_static) == 0:
-                    self._sim.setObjectInt32Param(shape, self._sim.shapeintparam_static, 1)
+                if (
+                    self._sim.getObjectInt32Param(shape, self._sim.shapeintparam_static)
+                    == 0
+                ):
+                    self._sim.setObjectInt32Param(
+                        shape, self._sim.shapeintparam_static, 1
+                    )
                     self._sim.resetDynamicObject(shape)
 
             except Exception as e:
@@ -147,20 +146,14 @@ class RobotArm:
         flange = self._sim.getObjectParent(self._tip)
 
         # Tip sits exactly on the flange, so its Z axis is the tool axis
-        self._sim.setObjectPose(
-            self._tip,
-            [0, 0, 0, 0, 0, 0, 1],
-            flange
-        )
+        self._sim.setObjectPose(self._tip, [0, 0, 0, 0, 0, 0, 1], flange)
 
         if self._sim.getObjectParent(self._pickup_sensor) != self._tip:
             self._sim.setObjectParent(self._pickup_sensor, self._tip, True)
 
         # Sensor looks along the tool axis, so it points down whenever the tool does
         self._sim.setObjectPose(
-            self._pickup_sensor,
-            [0, 0, self._sensor_offset_z, 0, 0, 0, 1],
-            self._tip
+            self._pickup_sensor, [0, 0, self._sensor_offset_z, 0, 0, 0, 1], self._tip
         )
 
     def _setup_ik(self) -> None:
@@ -179,7 +172,7 @@ class RobotArm:
             self._ik_group,
             self._simIK.method_damped_least_squares,
             self._ik_damping,
-            self._ik_max_iterations
+            self._ik_max_iterations,
         )
 
         # Pose constraint keeps the wrist orientation fixed while the target moves
@@ -189,7 +182,7 @@ class RobotArm:
             self._robot_base,
             self._tip,
             self._target,
-            self._simIK.constraint_pose
+            self._simIK.constraint_pose,
         )
 
     def close(self) -> None:
@@ -210,7 +203,9 @@ class RobotArm:
         """
         try:
             # options=1 returns true metric distances in meters as floats
-            depth_bytes, resolution = self._sim.getVisionSensorDepth(self._sensor_handle, 1)
+            depth_bytes, resolution = self._sim.getVisionSensorDepth(
+                self._sensor_handle, 1
+            )
         except Exception as e:
             raise RuntimeError(
                 f"ARM_SIM_ERROR: Failed to retrieve depth buffer: {e}"
@@ -257,7 +252,9 @@ class RobotArm:
         if self._tool_quaternion is None:
             raise RuntimeError("Call go_home() first so the tool orientation is known.")
 
-        pose = [float(position[0]), float(position[1]), float(position[2])] + list(self._tool_quaternion)
+        pose = [float(position[0]), float(position[1]), float(position[2])] + list(
+            self._tool_quaternion
+        )
 
         self._sim.setObjectPose(self._target, pose, self._robot_base)
 
@@ -266,9 +263,7 @@ class RobotArm:
 
         try:
             result = self._simIK.handleGroup(
-                self._ik_env,
-                self._ik_group,
-                {"syncWorlds": True}
+                self._ik_env, self._ik_group, {"syncWorlds": True}
             )
             code = result[0] if isinstance(result, (list, tuple)) else result
 
@@ -300,7 +295,9 @@ class RobotArm:
 
         start = self._tip_position()
 
-        steps = max(1, math.ceil(np.linalg.norm(destination - start) / self._linear_step))
+        steps = max(
+            1, math.ceil(np.linalg.norm(destination - start) / self._linear_step)
+        )
 
         for i in range(1, steps + 1):
             waypoint = start + (destination - start) * (i / steps)
@@ -350,7 +347,7 @@ class RobotArm:
         approach = (
             robot_point[0],
             robot_point[1],
-            robot_point[2] + self._approach_height_offset
+            robot_point[2] + self._approach_height_offset,
         )
 
         print("Detected robot point:", [round(c, 4) for c in robot_point])
@@ -367,10 +364,7 @@ class RobotArm:
 
         clicked = self.pixel_to_robot(u, v)
 
-        drop_position = self._sim.getObjectPosition(
-            self._drop_target,
-            self._robot_base
-        )
+        drop_position = self._sim.getObjectPosition(self._drop_target, self._robot_base)
 
         # Depth can be invalid when the click lands on empty background
         if not all(math.isfinite(c) for c in clicked):
@@ -384,7 +378,9 @@ class RobotArm:
 
         return drop_point
 
-    def pick_and_place(self, robot_point: Point, drop_point: Point | None = None) -> None:
+    def pick_and_place(
+        self, robot_point: Point, drop_point: Point | None = None
+    ) -> None:
         """Combine private functions to carry out a full pick and place based on a robot point"""
 
         # The tool orientation is only known once the arm has been home
@@ -434,8 +430,7 @@ class RobotArm:
         while True:
             result, distance, point, detected_object, normal = (
                 self._sim.checkProximitySensor(
-                    self._pickup_sensor,
-                    self._sim.handle_all
+                    self._pickup_sensor, self._sim.handle_all
                 )
             )
 
@@ -445,10 +440,7 @@ class RobotArm:
                 and detected_object != self._table
                 and detected_object not in self._robot_objects
             ):
-                print(
-                    f"Detected object {detected_object} "
-                    f"at {distance:.4f} m"
-                )
+                print(f"Detected object {detected_object} at {distance:.4f} m")
 
                 # Close the remaining gap so the tip stops right at the object
                 gap = max(0.0, distance - self._grip_gap)
@@ -463,9 +455,7 @@ class RobotArm:
 
             # Safety check so the robot cannot keep lowering forever
             if current[2] - self._step_size < minimum_z:
-                raise RuntimeError(
-                    "Pickup failed: no object detected."
-                )
+                raise RuntimeError("Pickup failed: no object detected.")
 
             # Lower the tip by one step
             self._move_linear((current[0], current[1], current[2] - self._step_size))
@@ -475,16 +465,13 @@ class RobotArm:
         # Make the object static while carried so physics cannot fight the parenting
         try:
             was_static = self._sim.getObjectInt32Param(
-                object_handle,
-                self._sim.shapeintparam_static
+                object_handle, self._sim.shapeintparam_static
             )
 
             self._carried_was_static[object_handle] = was_static
 
             self._sim.setObjectInt32Param(
-                object_handle,
-                self._sim.shapeintparam_static,
-                1
+                object_handle, self._sim.shapeintparam_static, 1
             )
             self._sim.resetDynamicObject(object_handle)
 
@@ -492,28 +479,18 @@ class RobotArm:
             # Not a shape, parenting still works
             pass
 
-        self._sim.setObjectParent(
-            object_handle,
-            self._tip,
-            True
-        )
+        self._sim.setObjectParent(object_handle, self._tip, True)
 
     def _release_object(self, object_handle: int) -> None:
 
-        self._sim.setObjectParent(
-            object_handle,
-            -1,
-            True
-        )
+        self._sim.setObjectParent(object_handle, -1, True)
 
         # Restore the object's original physics state
         was_static = self._carried_was_static.pop(object_handle, None)
 
         if was_static is not None:
             self._sim.setObjectInt32Param(
-                object_handle,
-                self._sim.shapeintparam_static,
-                was_static
+                object_handle, self._sim.shapeintparam_static, was_static
             )
             self._sim.resetDynamicObject(object_handle)
 
@@ -528,7 +505,7 @@ class RobotArm:
         destination = (
             current[0],
             current[1],
-            max(self._travel_height, current[2] + height)
+            max(self._travel_height, current[2] + height),
         )
 
         self._move_linear(destination)
@@ -551,15 +528,10 @@ class RobotArm:
             drop_position = drop_point
         else:
             drop_position = self._sim.getObjectPosition(
-                self._drop_target,
-                self._robot_base
+                self._drop_target, self._robot_base
             )
 
-        destination = (
-            drop_position[0],
-            drop_position[1],
-            drop_position[2]
-        )
+        destination = (drop_position[0], drop_position[1], drop_position[2])
 
         self._move_via_travel_height(destination)
 

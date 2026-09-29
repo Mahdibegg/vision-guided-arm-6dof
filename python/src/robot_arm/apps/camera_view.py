@@ -1,16 +1,16 @@
 import cv2 as cv
-
-from vision.cameras.camera import Camera
-from vision.detect import Detector, highlight_objects
 from config import (
     load_camera_config,
     load_grounding_dino_config,
     load_grounding_dino_weights,
-    load_yolo_model
+    load_yolo_model,
 )
+from vision.cameras.camera import Camera
+from vision.detect import Detector, highlight_objects
+
 
 def main() -> None:
-    
+
     # Load configs
     camera_config = load_camera_config()
 
@@ -27,15 +27,11 @@ def main() -> None:
         camera_config.height,
         camera_config.fps,
         # Required depending on the camera you are using
-        camera_config.format
+        camera_config.format,
     )
 
     # Initialize detection system with the loaded configs and model
-    detection_system = Detector(
-        dino_config,
-        dino_weights,
-        yolo_model
-    )
+    detection_system = Detector(dino_config, dino_weights, yolo_model)
 
     # Loop can be set to false if user presses the button to quit camera application
     loop = True
@@ -48,6 +44,7 @@ def main() -> None:
     finally:
         camera.close()
         cv.destroyAllWindows()
+
 
 if __name__ == "__main__":
     main()

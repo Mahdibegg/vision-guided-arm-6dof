@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from PySide6.QtCore import QObject, Signal, Slot
 
-from model.robot_arm import RobotArm, Point
+from model.robot_arm import Point, RobotArm
+from PySide6.QtCore import QObject, Signal, Slot
 from vision.detect import Detection
+
 
 class RobotArmWorker(QObject):
     """
@@ -50,12 +51,12 @@ class RobotArmWorker(QObject):
     def arm(self) -> RobotArm | None:
         """Return the current RobotArm instance."""
         return self._robot_arm
-    
+
     @property
     def robot_arm(self) -> RobotArm | None:
         """Expose the active RobotArm instance so the main thread can check link status."""
         return self._robot_arm
-    
+
     @Slot()
     def link(self) -> None:
         """Create a RobotArm instance and connect it to the running simulation."""

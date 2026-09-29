@@ -1,23 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from PySide6.QtCore import QObject, QTimer, Signal, Slot # type: ignore
-from cv2 import cvtColor, COLOR_BGR2RGB
 from pathlib import Path
-from cv2 import cvtColor, COLOR_BGR2RGB
 
+from cv2 import COLOR_BGR2RGB, cvtColor
+from PySide6.QtCore import QObject, QTimer, Signal, Slot  # type: ignore
 from vision.cameras.simulation_camera import SimulationCamera
 from vision.cameras.types import Frame
-from vision.detect import (
-    Detection,
-    Detector,
-    highlight_objects
-)
+from vision.detect import Detection, Detector, highlight_objects
+
 
 class CameraWorker(QObject):
     """
     CameraWorker is responsible for managing the camera and capturing frames in a Qt compatible manner.
-    It emits signals for frame ready, started, stopped, and error, allowing the worker to run in a separate thread from the main application thread. 
+    It emits signals for frame ready, started, stopped, and error, allowing the worker to run in a separate thread from the main application thread.
     """
 
     frame_ready = Signal(object)
@@ -84,11 +80,11 @@ class CameraWorker(QObject):
             # The grounding dino and yolo model
             if self._vision_model is None:
                 self._vision_model = Detector(
-                    config_path = self._grounding_dino_config,
-                    weights_path = self._grounding_dino_weights,
-                    yolo_model_name = self._yolo_model_name,
-                    box_threshold = 0.35,
-                    text_threshold = 0.25,
+                    config_path=self._grounding_dino_config,
+                    weights_path=self._grounding_dino_weights,
+                    yolo_model_name=self._yolo_model_name,
+                    box_threshold=0.35,
+                    text_threshold=0.25,
                 )
 
             self._camera = self._camera_factory()
@@ -133,7 +129,7 @@ class CameraWorker(QObject):
         # If the description remains the same, do nothing
         if new_description == self._detection_description:
             return
-    
+
         self._detection_description = new_description
         self._grounded_detections = []
         self._target_object = None
@@ -193,8 +189,8 @@ class CameraWorker(QObject):
 
         target = max(
             detections,
-            key = lambda detection: detection.confidence,
-            default = None,
+            key=lambda detection: detection.confidence,
+            default=None,
         )
 
         self._grounded_detections = detections
@@ -239,14 +235,14 @@ class CameraWorker(QObject):
         """Close and discard the current camera instance."""
         if self._camera is None:
             return
-        
+
         self.target_detected.emit(None)
         self._camera.close()
         self._camera = None
 
     def _process_frame(self, frame: Frame) -> Frame:
         """Apply YOLO and/or Grounding DINO detection to a camera frame."""
-        
+
         has_description = self._detection_description is not None
 
         if not self._full_detection_enabled and not has_description:
@@ -257,28 +253,22 @@ class CameraWorker(QObject):
 
         yolo_detections: list[Detection] = []
 
-        if (
-            self._full_detection_enabled
-            and self._vision_model is not None
-        ):
+        if self._full_detection_enabled and self._vision_model is not None:
             yolo_detections = self._vision_model.analyse(frame)
 
             highlighted_frame = highlight_objects(
-                frame = highlighted_frame,
-                objects = yolo_detections,
+                frame=highlighted_frame,
+                objects=yolo_detections,
             )
 
         if has_description:
             highlighted_frame = highlight_objects(
-                frame = highlighted_frame,
-                objects = self._grounded_detections,
-                target_object = self._target_object,
+                frame=highlighted_frame,
+                objects=self._grounded_detections,
+                target_object=self._target_object,
             )
 
-        self._objects_detected = (
-            yolo_detections
-            + self._grounded_detections
-        )
+        self._objects_detected = yolo_detections + self._grounded_detections
 
         return cvtColor(
             highlighted_frame,

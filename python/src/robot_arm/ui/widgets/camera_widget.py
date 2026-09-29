@@ -11,8 +11,8 @@ from PySide6.QtGui import (
     QResizeEvent,
 )
 from PySide6.QtWidgets import QLabel
-
 from vision.cameras.types import Frame
+
 
 class CameraWidget(QLabel):
     """
@@ -57,7 +57,6 @@ class CameraWidget(QLabel):
             QImage.Format.Format_RGB888,
         ).copy()
 
-        
         self._source_pixmap = QPixmap.fromImage(image)
         self._update_display()
 
