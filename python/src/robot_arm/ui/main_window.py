@@ -534,15 +534,6 @@ class MainWindow(QMainWindow):
             )
             self._command_input.clear()
             return
-        elif sanitized_text.command == "default":
-            self._log_widget.addLine(
-                LogLevel.CMD,
-                "moving object to default position...",
-                Colour.BLUE,
-            )
-            self._command_input.clear()
-            
-            return
         
         input_text = sanitized_text.input
         
