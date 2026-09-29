@@ -1,0 +1,124 @@
+log:
+  max_lines: 1024
+
+styles:
+  camera_widget: |
+    QLabel {
+        background-color: #000000;
+        color: #FFFFFF
+    }
+
+  log_widget: |
+    QPlainTextEdit {
+        background-color: #000000;
+        border-radius: 20px;
+        padding: 20px;
+        font-family: "Monospace";
+        font-size: 12px;
+        color: #FFFFFF;
+    }
+
+  app_widget: |
+    QWidget {
+        background-color: #111419;
+    }
+
+  button_widget: |
+    QPushButton {
+        min-height: 76px;
+        padding: 0 20px;
+
+        background-color: #272C34;
+        color: #E8ECF2;
+
+        border: 1px solid #3B424D;
+        border-radius: 9px;
+
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    QPushButton:hover {
+        background-color: #323945;
+        border-color: #5A86C8;
+    }
+
+    QPushButton:pressed {
+        background-color: #1E2229;
+        border-color: #78A7ED;
+    }
+
+    QPushButton:disabled {
+        background-color: #20242A;
+        color: #646B76;
+        border-color: #2C3139;
+    }
+
+    QPushButton#checkableButton:checked {
+        background-color: #4B91EE;
+        color: #FFFFFF;
+        border-color: #78AEF5;
+    }
+
+    QPushButton#checkableButton:checked:hover {
+        background-color: #5A9EF4;
+        border-color: #91BDF7;
+    }
+
+    QPushButton#checkableButton:checked:pressed {
+        background-color: #397DD8;
+    }
+
+  command_bar: |
+    QWidget#commandBar {
+        background-color: #111419;
+        border: 1px solid #363D47;
+        border-radius: 10px;
+    }
+
+    QLineEdit#commandInput {
+        min-height: 72px;
+        padding: -20 18px;
+
+        background-color: transparent;
+        color: #F0F3F7;
+
+        border: none;
+
+        font-size: 20px;
+    }
+
+    QLineEdit#commandInput::placeholder {
+        color: #747D89;
+    }
+
+    QPushButton#submitButton {
+        min-width: 130px;
+        min-height: 44px;
+        margin: 4px;
+        padding: 0 20px;
+
+        background-color: #3677D3;
+        color: #FFFFFF;
+
+        border: 1px solid #5794E8;
+        border-radius: 7px;
+
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    QPushButton#submitButton:hover {
+        background-color: #4386E2;
+        border-color: #79AEF3;
+    }
+
+    QPushButton#submitButton:pressed {
+        background-color: #2D65B4;
+    }
+
+    QPushButton#submitButton:disabled {
+        background-color: #252A31;
+        color: #656D78;
+        border-color: #343A43;
+    }
