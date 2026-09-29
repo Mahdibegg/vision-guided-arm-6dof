@@ -13,31 +13,6 @@ from arm.config_loader import ArmConfig
 Point: TypeAlias = tuple[float, float, float]
 
 class RobotArm:
-    # Hardcoded for now, these move into robot_arm.yaml in a later commit
-
-    # Home pose in degrees for joints 1 to 6, bent and pointing down (not a singular pose)
-    HOME_JOINTS_DEG = (-90.0, 0.0, -100.0, 10.0, 90.0, 0.0)
-    HOME_STEPS = 60
-
-    # Heights and distances in meters
-    TRAVEL_HEIGHT = 0.30
-    MAX_DESCENT = 0.30
-    GRIP_GAP = 0.005
-    MAX_REACH = 0.82
-
-    # Straight line movement
-    LINEAR_STEP = 0.01
-    STEP_DELAY = 0.02
-    MAX_TRACKING_ERROR = 0.005
-
-    # Proximity sensor offset along the tool axis in meters
-    SENSOR_OFFSET_Z = 0.005
-
-    # IK solver
-    IK_DAMPING = 0.02
-    IK_MAX_ITERATIONS = 20
-    IK_RETRIES = 3
-
     def __init__(self, connection: SimulationConnection, simulation_camera: SimulationCamera, config: ArmConfig) -> None:
         # Storing connection for any methods for SimulationConnection to be used (so far none)
         self._connection = connection
@@ -47,15 +22,18 @@ class RobotArm:
         # Retrieve sensor handle from simulation camera
         self._sensor_handle = simulation_camera.sensor_handle
 
-        # Get simulation objects
+        # Get simulation objects using config values
         self._robot_base = self._sim.getObject(config.model_path)
         self._target = self._sim.getObject(config.target_path)
-        self._tip = self._sim.getObject("/UR5/tip")
-        self._pickup_sensor = self._sim.getObject("/UR5/proximitySensor")
-        self._drop_target = self._sim.getObject("/Drop_Target")
+        self._tip = self._sim.getObject(config.tip_path)
+        self._pickup_sensor = self._sim.getObject(config.proximity_sensor_path)
+        self._drop_target = self._sim.getObject(config.drop_target_path)
 
         # The table is optional, it is only used to ignore it when detecting objects
-        self._table = self._sim.getObject("/table", {"noError": True})
+        self._table = (
+            self._sim.getObject(config.table_path, {"noError": True})
+            if config.table_path else -1
+        )
 
         # The six UR5 joints and every object that belongs to the robot
         self._joints = list(
@@ -83,23 +61,23 @@ class RobotArm:
         self._approach_height_offset = config.approach_height_offset
 
         # Motion values
-        self._travel_height = self.TRAVEL_HEIGHT
-        self._max_descent = self.MAX_DESCENT
-        self._grip_gap = self.GRIP_GAP
-        self._linear_step = self.LINEAR_STEP
-        self._step_delay = self.STEP_DELAY
-        self._max_tracking_error = self.MAX_TRACKING_ERROR
-        self._max_reach = self.MAX_REACH
+        self._travel_height = config.travel_height
+        self._max_descent = config.max_descent
+        self._grip_gap = config.grip_gap
+        self._linear_step = config.linear_step
+        self._step_delay = config.step_delay
+        self._max_tracking_error = config.max_tracking_error
+        self._max_reach = config.max_reach
 
-        # Home pose is stored in radians, the constant is in degrees
-        self._home_joints = [math.radians(angle) for angle in self.HOME_JOINTS_DEG]
-        self._home_steps = self.HOME_STEPS
+        # Home pose is stored in radians, the config gives it in degrees
+        self._home_joints = [math.radians(angle) for angle in config.home_joints_deg]
+        self._home_steps = config.home_steps
 
         # Tool and IK values
-        self._sensor_offset_z = self.SENSOR_OFFSET_Z
-        self._ik_damping = self.IK_DAMPING
-        self._ik_max_iterations = self.IK_MAX_ITERATIONS
-        self._ik_retries = self.IK_RETRIES
+        self._sensor_offset_z = config.sensor_offset_z
+        self._ik_damping = config.ik_damping
+        self._ik_max_iterations = config.ik_max_iterations
+        self._ik_retries = config.ik_retries_per_step
 
         self._width, self._height = simulation_camera.resolution
 
@@ -423,7 +401,7 @@ class RobotArm:
         print("HOME reached. TCP:", self._tip_position().round(4).tolist())
 
     def return_to_default_position(self) -> None:
-        """Return the arm to the home pose."""
+        """Return the arm to the home pose defined in the config."""
         self.go_home()
 
     # Lower the TCP until the proximity sensor detects an object

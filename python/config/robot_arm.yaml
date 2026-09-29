@@ -1,11 +1,40 @@
 arm:
+  #Scene object paths (CoppeliaSim)
   model_path: "/UR5"
   target_path: "/UR5/target"
+  tip_path: "/UR5/tip"
+  proximity_sensor_path: "/UR5/proximitySensor"
+  drop_target_path: "/Drop_Target"
+  table_path: "/table"            
 
   serial_port: null
   baudrate: 115200
 
-  approach_height_offset: 0.20
+  #Pick and place
+  approach_height_offset: 0.20    # move above the object before descending
+  travel_height: 0.30             # safe height for horizontal travel
+  step_size: 0.005                # meter per step while lowering to find the object
+  max_descent: 0.30               # give up if nothing is detected within this
+  grip_gap: 0.005                 # stop this close to the object before attaching(range of the proximity sensor)
+
+  #Motion
+  linear_step: 0.01               # IK step on straight-line moves
+  step_delay: 0.02                # time between steps (lower = quicker)
+  max_tracking_error: 0.005       # abort a move if the tip lags this far behind
+  max_reach: 0.82                 # horizontal radius limit with the tool pointing down
+
+  #Home pose (degrees, joints 1-6): bent and non-singular, tool pointing down
+  home_joints_deg: [-90.0, 0.0, -100.0, 10.0, 90.0, 0.0]
+  home_steps: 60
+
+  #Tool frames
+  sensor_offset_z: 0.005          # proximity sensor offset along the tool axis
+
+  # IK solver
+  ik_damping: 0.02
+  ik_max_iterations: 20
+  ik_retries_per_step: 3
+
+  #Legacy (no longer used by the new motion code, safe to keep)
   max_velocity: 0.5
-  step_size: 0.005
   steps_count: 100
