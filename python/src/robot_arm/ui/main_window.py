@@ -60,6 +60,7 @@ class MainWindow(QMainWindow):
     break_arm_link_requested = Signal()
     move_arm_to_pixel_requested = Signal(int, int)
     pick_target_requested = Signal(object)
+    set_drop_pixel_requested = Signal(int, int)
 
     def __init__(self) -> None:
         super().__init__()
@@ -318,6 +319,11 @@ class MainWindow(QMainWindow):
         self._robot_arm_worker.movement_finished.connect(self._on_arm_movement_finished)
         
         self.pick_target_requested.connect(self._robot_arm_worker.pick_target)
+        # Click on the camera view to choose where the next pick is dropped
+        self._camera_widget.pixel_clicked.connect(self._on_camera_clicked)
+        self.set_drop_pixel_requested.connect(self._robot_arm_worker.set_drop_pixel)
+        self._robot_arm_worker.drop_point_set.connect(self._on_drop_point_set)
+        self._robot_arm_worker.drop_point_rejected.connect(self._on_drop_point_rejected)
 
     # Camera worker functionality
 
@@ -498,6 +504,7 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_arm_error(self, message: str) -> None:
+        self._camera_widget.clear_drop_marker()
         self._arm_linked = False
         self._link_arm_button.setChecked(False)
         self._log_widget.addLine(LogLevel.ERROR, f"Robot arm error: {message}", Colour.RED)
@@ -508,7 +515,44 @@ class MainWindow(QMainWindow):
 
     @Slot(object)
     def _on_arm_movement_finished(self, robot_point) -> None:
+        self._camera_widget.clear_drop_marker()
         self._link_arm_button.setEnabled(True)
+
+        # Camera click functionality
+
+    @Slot(int, int)
+    def _on_camera_clicked(self, u: int, v: int) -> None:
+        if not self._arm_linked:
+            self._log_widget.addLine(
+                LogLevel.WARNING,
+                "link the arm before choosing a drop point",
+                Colour.YELLOW
+            )
+            return
+
+        # The link button is disabled for the whole movement, so ignore clicks mid-pick
+        if not self._link_arm_button.isEnabled():
+            return
+
+        self._camera_widget.set_drop_marker(u, v)
+        self.set_drop_pixel_requested.emit(u, v)
+
+    @Slot(object)
+    def _on_drop_point_set(self, drop_point) -> None:
+        self._log_widget.addLine(
+            LogLevel.INFO,
+            f"drop point set at x={drop_point[0]:.3f} y={drop_point[1]:.3f}, enter an object to pick",
+            Colour.GREEN
+        )
+
+    @Slot(str)
+    def _on_drop_point_rejected(self, message: str) -> None:
+        self._camera_widget.clear_drop_marker()
+        self._log_widget.addLine(
+            LogLevel.WARNING,
+            f"drop point rejected: {message}",
+            Colour.YELLOW
+        )
 
     # Command input functionality
 

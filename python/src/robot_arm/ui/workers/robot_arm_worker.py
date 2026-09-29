@@ -23,6 +23,12 @@ class RobotArmWorker(QObject):
     movement_started = Signal()
     movement_finished = Signal(object)
 
+    # Emitted with the robot frame point once a drop location has been chosen
+    drop_point_set = Signal(object)
+
+    # Emitted with a message when a clicked drop point cannot be used (arm stays linked)
+    drop_point_rejected = Signal(str)
+
     def __init__(
         self,
         # Create a new RobotArm instance when called
@@ -36,6 +42,9 @@ class RobotArmWorker(QObject):
         self._robot_arm_factory = robot_arm_factory
 
         self._robot_arm: RobotArm | None = None
+
+        # Where the next pick should be dropped, None means the drop target in the scene
+        self._drop_point: Point | None = None
 
     @property
     def arm(self) -> RobotArm | None:
@@ -95,6 +104,24 @@ class RobotArmWorker(QObject):
         except Exception as error:
             self.error.emit(str(error))
 
+    # Choosing where the next pick will be dropped, e.g. from a click on the camera view
+    @Slot(int, int)
+    def set_drop_pixel(self, u: int, v: int) -> None:
+        """Convert a clicked pixel into a drop point used by the next pick."""
+        if self._robot_arm is None:
+            self.drop_point_rejected.emit("robot arm is not linked.")
+            return
+
+        try:
+            self._drop_point = self._robot_arm.pixel_to_drop_point(u, v)
+
+            self.drop_point_set.emit(self._drop_point)
+
+        except Exception as error:
+            # Keep the previous drop point cleared and tell the UI, this is not a link failure
+            self._drop_point = None
+            self.drop_point_rejected.emit(str(error))
+
     @Slot(object)
     def pick_target(self, target: Detection) -> None:
         """Pick up and place a detected target using its bounding box centre."""
@@ -112,6 +139,10 @@ class RobotArmWorker(QObject):
         u = int((x1 + x2) / 2)
         v = int((y1 + y2) / 2)
 
+        # The chosen drop point applies to this one pick only, even if the pick fails
+        drop_point = self._drop_point
+        self._drop_point = None
+
         try:
             self.movement_started.emit()
 
@@ -119,7 +150,7 @@ class RobotArmWorker(QObject):
             robot_point = self._robot_arm.pixel_to_robot(u, v)
 
             # Run the complete pickup and drop routine
-            self._robot_arm.pick_and_place(robot_point)
+            self._robot_arm.pick_and_place(robot_point, drop_point)
 
             self.movement_finished.emit(robot_point)
 
